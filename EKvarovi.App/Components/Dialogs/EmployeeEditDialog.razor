@@ -1,0 +1,125 @@
+@using System.Net.Http.Json
+@using EKvarovi.Shared.DTOs
+@inject HttpClient Http
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" Model="_model">
+            <MudTextField T="string" @bind-Value="_model.FirstName" Label="Ime" Required="true"
+                          RequiredError="Ime je obavezno" MaxLength="100" />
+            <MudTextField T="string" @bind-Value="_model.LastName" Label="Prezime" Required="true"
+                          RequiredError="Prezime je obavezno" MaxLength="100" Class="mt-3" />
+            <MudTextField T="string" @bind-Value="_model.Email" Label="Email" Required="true"
+                          RequiredError="Email je obavezan" InputType="InputType.Email" Class="mt-3" />
+            <MudSelect T="int" @bind-Value="_model.LocationId" Label="Lokacija" Required="true"
+                       RequiredError="Lokacija je obavezna" Class="mt-3">
+                @foreach (var location in Locations)
+                {
+                    <MudSelectItem T="int" Value="location.Id">@location.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudCheckBox T="bool" @bind-Value="_model.IsReporter" Label="Prijavitelj" Color="Color.Primary" Class="mt-3" />
+            <MudCheckBox T="bool" @bind-Value="_model.IsTechnician" Label="Izvršitelj" Color="Color.Primary" />
+            <MudSwitch T="bool" @bind-Value="_model.IsActive" Label="Aktivan" Color="Color.Primary" Class="mt-3" />
+        </MudForm>
+
+        @if (_errorMessage is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_errorMessage</MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="_isSaving">
+            Spremi
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public EmployeeDto? Existing { get; set; }
+    [Parameter] public List<LookupDto> Locations { get; set; } = new();
+
+    private MudForm _form = null!;
+    private SaveEmployeeDto _model = new() { IsActive = true };
+    private string? _errorMessage;
+    private bool _isSaving;
+
+    protected override void OnInitialized()
+    {
+        if (Existing is not null)
+        {
+            _model = new SaveEmployeeDto
+            {
+                FirstName = Existing.FirstName,
+                LastName = Existing.LastName,
+                Email = Existing.Email ?? string.Empty,
+                LocationId = Existing.LocationId,
+                IsReporter = Existing.IsReporter,
+                IsTechnician = Existing.IsTechnician,
+                IsActive = Existing.IsActive
+            };
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        if (!_model.IsReporter && !_model.IsTechnician)
+        {
+            _errorMessage = "Zaposlenik mora imati barem jednu ulogu - Prijavitelj ili Izvršitelj.";
+            return;
+        }
+
+        _isSaving = true;
+        _errorMessage = null;
+
+        try
+        {
+            var response = Existing is null
+                ? await Http.PostAsJsonAsync("api/employees", _model)
+                : await Http.PutAsJsonAsync($"api/employees/{Existing.Id}", _model);
+
+            if (response.IsSuccessStatusCode)
+            {
+                MudDialog.Close(DialogResult.Ok(true));
+            }
+            else
+            {
+                _errorMessage = await ReadErrorMessageAsync(response);
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Greška prilikom spremanja zaposlenika: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private static async Task<string> ReadErrorMessageAsync(HttpResponseMessage response)
+    {
+        try
+        {
+            var message = await response.Content.ReadFromJsonAsync<string>();
+            return string.IsNullOrWhiteSpace(message)
+                ? $"Greška prilikom spremanja (HTTP {(int)response.StatusCode})."
+                : message;
+        }
+        catch
+        {
+            return $"Greška prilikom spremanja (HTTP {(int)response.StatusCode}).";
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

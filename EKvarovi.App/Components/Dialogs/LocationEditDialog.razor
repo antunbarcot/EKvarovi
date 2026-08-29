@@ -1,0 +1,112 @@
+@using System.Net.Http.Json
+@using EKvarovi.Shared.DTOs
+@inject HttpClient Http
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" Model="_model">
+            <MudTextField T="string" @bind-Value="_model.Name" Label="Naziv" Required="true"
+                          RequiredError="Naziv je obavezan" MaxLength="200" />
+            <MudTextField T="string" @bind-Value="_model.Address" Label="Adresa" Required="true"
+                          RequiredError="Adresa je obavezna" MaxLength="300" Class="mt-3" />
+            <MudSelect T="int" @bind-Value="_model.LocationTypeId" Label="Tip lokacije" Required="true"
+                       RequiredError="Tip lokacije je obavezan" Class="mt-3">
+                @foreach (var locationType in LocationTypes)
+                {
+                    <MudSelectItem T="int" Value="locationType.Id">@locationType.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSwitch T="bool" @bind-Value="_model.IsActive" Label="Aktivna" Color="Color.Primary" Class="mt-3" />
+        </MudForm>
+
+        @if (_errorMessage is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_errorMessage</MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="_isSaving">
+            Spremi
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public LocationDto? Existing { get; set; }
+    [Parameter] public List<LookupDto> LocationTypes { get; set; } = new();
+
+    private MudForm _form = null!;
+    private SaveLocationDto _model = new() { IsActive = true };
+    private string? _errorMessage;
+    private bool _isSaving;
+
+    protected override void OnInitialized()
+    {
+        if (Existing is not null)
+        {
+            _model = new SaveLocationDto
+            {
+                Name = Existing.Name,
+                Address = Existing.Address,
+                LocationTypeId = Existing.LocationTypeId,
+                IsActive = Existing.IsActive
+            };
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        _errorMessage = null;
+
+        try
+        {
+            var response = Existing is null
+                ? await Http.PostAsJsonAsync("api/locations", _model)
+                : await Http.PutAsJsonAsync($"api/locations/{Existing.Id}", _model);
+
+            if (response.IsSuccessStatusCode)
+            {
+                MudDialog.Close(DialogResult.Ok(true));
+            }
+            else
+            {
+                _errorMessage = await ReadErrorMessageAsync(response);
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Greška prilikom spremanja lokacije: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private static async Task<string> ReadErrorMessageAsync(HttpResponseMessage response)
+    {
+        try
+        {
+            var message = await response.Content.ReadFromJsonAsync<string>();
+            return string.IsNullOrWhiteSpace(message)
+                ? $"Greška prilikom spremanja (HTTP {(int)response.StatusCode})."
+                : message;
+        }
+        catch
+        {
+            return $"Greška prilikom spremanja (HTTP {(int)response.StatusCode}).";
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

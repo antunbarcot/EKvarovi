@@ -1,0 +1,337 @@
+// =====================================================================
+// e-Kvarovi Zupanije - DBML model baze (dbdiagram.io)
+// Tema: 3. e-Kvarovi Zupanije - prijava i obrada kvarova
+// Napomena: DBML ne podrzava direktno "filtered/partial unique index"
+// (WHERE klauzula), pa su takva pravila dokumentirana kao Note na tablici
+// i moraju biti implementirana kao filtered index u EF Core migraciji
+// (ili provjerom u servisu/transakciji) - vidi WorkAssignments.
+// =====================================================================
+
+
+// ---------------------------------------------------------------------
+// LOOKUP TABLICE
+// ---------------------------------------------------------------------
+
+Table LocationTypes {
+  Id int [pk, increment]
+  Name varchar(100) [not null, unique]
+
+  Note: 'Seed: Upravna zgrada, Skola, Zdravstvena ustanova, Skladiste'
+}
+
+Table FaultTypes {
+  Id int [pk, increment]
+  Name varchar(100) [not null, unique]
+
+  Note: 'Seed: Elektrika, Voda, Grijanje, Mreza, Gradevinski radovi, Ostalo'
+}
+
+Table FaultPriorities {
+  Id int [pk, increment]
+  Name varchar(50) [not null, unique]
+  SortOrder int [not null, note: 'Za sortiranje/prikaz Nizak..Kritican bez oslanjanja na Id']
+
+  Note: 'Seed: Nizak, Srednji, Visok, Kritican'
+}
+
+Table FaultStatuses {
+  Id int [pk, increment]
+  Name varchar(50) [not null, unique]
+  SortOrder int [not null]
+
+  Note: 'Seed: Zaprimljeno, Pregledano, Dodijeljeno, U radu, Rijeseno, Zatvoreno. Redoslijed odgovara propisanom tijeku statusa.'
+}
+
+Table InterventionStatuses {
+  Id int [pk, increment]
+  Name varchar(50) [not null, unique]
+
+  Note: 'Seed: Planirana, U tijeku, Zavrsena, Neuspjesna. "Zavrsena" = uspjesan zavrsetak; "Neuspjesna" ostaje u povijesti i ne blokira novu intervenciju na istoj dodjeli.'
+}
+
+Table MaterialUnits {
+  Id int [pk, increment]
+  Name varchar(50) [not null, unique]
+  Abbreviation varchar(10) [not null]
+
+  Note: 'Seed: Komad (kom), Metar (m), Litra (l), Kilogram (kg), Paket (pak)'
+}
+
+Table AttachmentPurposes {
+  Id int [pk, increment]
+  Name varchar(50) [not null, unique]
+
+  Note: 'Seed: FotografijaPrije, FotografijaPoslije, Dokument. Lookup umjesto hardkodiranog enuma, konzistentno s ostatkom modela.'
+}
+
+Table AppRoles {
+  Id int [pk, increment]
+  Name varchar(50) [not null, unique]
+
+  Note: 'Seed: Admin, Manager, Technician, Reporter'
+}
+
+
+// ---------------------------------------------------------------------
+// LOKACIJE I ZAPOSLENICI
+// ---------------------------------------------------------------------
+
+Table Locations {
+  Id int [pk, increment]
+  Name varchar(200) [not null]
+  Address varchar(300) [not null]
+  LocationTypeId int [not null]
+  IsActive boolean [not null, default: true, note: 'Prijava smije biti vezana samo na aktivnu lokaciju - provjerava API kod kreiranja prijave']
+  CreatedAt datetime [not null]
+
+  Note: 'Zupanijske lokacije (zgrade/ustanove) na kojima nastaju kvarovi.'
+}
+
+Table Employees {
+  Id int [pk, increment]
+  LocationId int [not null]
+  FirstName varchar(100) [not null]
+  LastName varchar(100) [not null]
+  Email varchar(200) [null]
+  Phone varchar(50) [null]
+  IsReporter boolean [not null, default: false, note: 'Osoba moze prijavljivati kvarove']
+  IsTechnician boolean [not null, default: false, note: 'Osoba moze biti zaduzena za izvrsenje naloga']
+  IsActive boolean [not null, default: true]
+  CreatedAt datetime [not null]
+
+  Note: 'Zaposlenik pripada tocno jednoj lokaciji. IsReporter/IsTechnician nisu ekskluzivni - ista osoba moze biti i prijavitelj i izvrsitelj (npr. domar koji i prijavljuje i popravlja).'
+}
+
+
+// ---------------------------------------------------------------------
+// PRIJAVE KVAROVA
+// ---------------------------------------------------------------------
+
+Table FaultReports {
+  Id int [pk, increment]
+  LocationId int [not null]
+  ReporterId int [not null, note: 'FK na Employees - zaposlenik koji je prijavio kvar']
+  Title varchar(200) [not null]
+  Description text [not null]
+  FaultTypeId int [null, note: 'Nullable - vrstu kvara odreduje upravitelj tek kod pregleda, ne mora biti poznata u trenutku prijave']
+  FaultPriorityId int [null, note: 'Nullable - prioritet odreduje upravitelj tek kod pregleda']
+  FaultStatusId int [not null, note: 'Default = Zaprimljeno kod kreiranja']
+  DueDate datetime [null, note: 'Obavezan (aplikacijsko pravilo, ne DB constraint) kada je FaultPriority = Kritican - provjerava se u servisu jer je uvjetovano vrijednoscu druge nullable FK']
+  CreatedAt datetime [not null]
+  UpdatedAt datetime [not null]
+
+  Note: 'Sredisnja poslovna cjelina. FaultTypeId i FaultPriorityId su namjerno nullable - "nepoznato" stanje dok upravitelj ne pregleda prijavu.'
+}
+
+
+// ---------------------------------------------------------------------
+// DODJELE (WorkAssignments) I INTERVENCIJE
+// ---------------------------------------------------------------------
+
+Table WorkAssignments {
+  Id int [pk, increment]
+  FaultReportId int [not null]
+  TechnicianId int [not null, note: 'FK na Employees (IsTechnician = true)']
+  AssignedAt datetime [not null]
+  AssignedByAppUserId int [not null, note: 'Manager/Admin koji je napravio dodjelu']
+  UnassignedAt datetime [null, note: 'Popunjava se kad dodjela prestane biti aktivna (ponovna dodjela ili zavrsetak)']
+  IsActive boolean [not null, default: true]
+  ReassignmentNote varchar(500) [null, note: 'Zasto je doslo do ponovne dodjele (opcionalno)']
+
+  Note: '''
+  KLJUCNA TABLICA za povijest dodjela.
+  IsActive postoji jer se prijava kroz svoj zivotni ciklus moze dodjeljivati
+  razlicitim izvrsiteljima VISE PUTA, a stara dodjela se NIKAD ne brise niti
+  prepisuje - svaka dodjela je novi red. IsActive=true oznacava koja je od
+  (potencijalno vise) dodjela za istu FaultReportId trenutno "na snazi".
+  Ponovna dodjela = insert novog reda (IsActive=true) + update starog reda
+  na IsActive=false i UnassignedAt=now, unutar iste transakcije.
+  Poslovno pravilo "najvise jedna aktivna dodjela po prijavi" se ne moze
+  izraziti standardnim unique constraintom (jer stare, neaktivne dodjele
+  dijele isti FaultReportId), pa se provodi:
+    (a) transakcijski u servisu (deaktiviraj staru pa tek onda umetni novu), i
+    (b) preporuceno dodatno osigurati filtered unique indexom u EF Core
+        migraciji: UNIQUE (FaultReportId) WHERE IsActive = 1 (SQLite to
+        podrzava, DBML alat to ne prikazuje kao standardni index).
+  '''
+}
+
+Table Interventions {
+  Id int [pk, increment]
+  WorkAssignmentId int [not null, note: 'Veze se na WorkAssignment, NE direktno na FaultReport - vidi napomenu ispod']
+  InterventionStatusId int [not null]
+  StartedAt datetime [null]
+  EndedAt datetime [null]
+  DurationMinutes int [null, note: 'Izracunato iz StartedAt/EndedAt kod zavrsetka i spremljeno radi jednostavnog izvjestavanja/dashboarda; nije izvor istine (StartedAt/EndedAt jesu)']
+  Notes text [null, note: 'Obavezno popunjeno kad je intervencija zavrsena (uspjesno ili neuspjesno) - provjerava servis']
+  CreatedAt datetime [not null]
+
+  Note: '''
+  Zasto WorkAssignmentId a ne FaultReportId:
+  Intervencija je uvijek rad KONKRETNOG izvrsitelja u okviru NJEGOVE
+  aktivne dodjele. Kad se prijava ponovno dodijeli drugom izvrsitelju,
+  otvara se novi WorkAssignment red, pa nove intervencije prirodno "vise"
+  na novoj dodjeli - stare intervencije ostaju trajno povezane sa STAROM
+  dodjelom (i time sa starim izvrsiteljem) bez ikakvog dodatnog polja za
+  "koji je izvrsitelj ovo radio". Da se Interventions vezao direktno na
+  FaultReportId, izgubila bi se ta veza intervencija <-> izvrsitelj/dodjela
+  cim bi doslo do reassignmenta, ili bi trebalo duplicirati TechnicianId
+  na Interventions - sto bi omogucilo nekonzistentnost (intervencija s
+  izvrsiteljem koji trenutno uopce nije aktivno dodijeljen na prijavu).
+  Do FaultReports se uvijek dolazi tranzitivno: Intervention -> WorkAssignment -> FaultReport.
+  Jedna dodjela moze imati 0..N intervencija (dodjela sama po sebi ne
+  stvara intervenciju - "U radu" status prijave postavlja se tek kad
+  se PRVA intervencija pokrene). Neuspjesna intervencija (InterventionStatus
+  = Neuspjesna) ostaje trajno u povijesti i ne sprjecava otvaranje nove
+  intervencije na istoj (i dalje aktivnoj) dodjeli.
+  '''
+}
+
+Table Materials {
+  Id int [pk, increment]
+  Name varchar(200) [not null]
+  MaterialUnitId int [not null, note: 'Svaki materijal ima svoju prirodnu jedinicu mjere (npr. "Kabel" -> Metar) - definirana na master zapisu materijala, ne iznova pri svakom unosu']
+  IsActive boolean [not null, default: true]
+
+  Note: 'Sifrarnik materijala kojeg odrzava Admin/Manager (nije fiksni seed poput ostalih lookupova, moze rasti tijekom koristenja aplikacije).'
+}
+
+Table InterventionMaterials {
+  Id int [pk, increment]
+  InterventionId int [not null]
+  MaterialId int [not null]
+  Quantity decimal [not null, note: 'Mora biti > 0 - provjerava servis']
+
+  Note: '''
+  M:N spojna tablica izmedu Interventions i Materials s dodatnim poljem
+  Quantity. Jedna intervencija moze koristiti vise razlicitih materijala,
+  a isti materijal se moze pojaviti u vise razlicitih intervencija (i cak
+  vise puta u istoj, ako se doda dva puta - dopusteno, red po unosu).
+  Jedinica mjere se ne duplicira ovdje - cita se preko Material.MaterialUnitId.
+  '''
+}
+
+
+// ---------------------------------------------------------------------
+// PRIVICI (fotografije / dokumenti)
+// ---------------------------------------------------------------------
+
+Table Attachments {
+  Id int [pk, increment]
+  FaultReportId int [not null, note: 'Privitak uvijek pripada prijavi (grupiranje na razini cijele prijave)']
+  InterventionId int [null, note: 'Opcionalno - ako je fotografija/dokument vezan uz konkretnu intervenciju (npr. "poslije" fotka te specificne intervencije), a ne uz prijavu opcenito']
+  AttachmentPurposeId int [not null, note: 'FotografijaPrije / FotografijaPoslije / Dokument']
+  OriginalFileName varchar(260) [not null, note: 'Naziv kakav je korisnik uploadao']
+  StoredFileName varchar(260) [not null, note: 'Sigurno generirano fizicko ime (npr. GUID + ekstenzija) - sprjecava path traversal i koliziju imena']
+  ContentType varchar(100) [not null]
+  FileSizeBytes bigint [not null]
+  UploadedAt datetime [not null]
+  UploadedByAppUserId int [not null]
+
+  Note: '''
+  Namjena privitka (prije/poslije/dokument) je lookup polje AttachmentPurposeId,
+  ne slobodni tekst - UI prikazuje naziv, baza sprema Id. Brisanje privitka
+  mora ukloniti i fizicku datoteku s diska i DB zapis (provodi API servis,
+  ne migracija/DB).
+  '''
+}
+
+
+// ---------------------------------------------------------------------
+// KORISNICKI RACUNI (odvojeno od poslovnih profila Employee)
+// ---------------------------------------------------------------------
+
+Table AppUsers {
+  Id int [pk, increment]
+  Email varchar(200) [not null, unique]
+  PasswordHash varchar(500) [not null, note: 'PasswordHasher<AppUser> - nikad plain text']
+  DisplayName varchar(200) [not null]
+  IsActive boolean [not null, default: true]
+  EmployeeId int [null, note: 'Opcionalna veza na poslovni profil (Employee) - Admin povezuje racun s prijaviteljem/izvrsiteljem; nije svaki AppUser nuzno Employee (npr. cisti Admin racun)']
+  CreatedAt datetime [not null]
+
+  Note: 'Racun za prijavu u aplikaciju. Odvojen od Employee jer prijava/izvrsenje kvarova je poslovni koncept, a AppUser je autentikacijski koncept - isti Employee moze (ali ne mora) imati AppUser, i AppUser moze postojati bez Employee profila (npr. Admin).'
+}
+
+Table AppUserRoles {
+  AppUserId int [not null]
+  AppRoleId int [not null]
+
+  indexes {
+    (AppUserId, AppRoleId) [pk]
+  }
+
+  Note: 'M:N - jedan AppUser moze imati vise uloga istovremeno (npr. Manager i Technician).'
+}
+
+
+// =====================================================================
+// RELACIJE
+// =====================================================================
+
+Ref: Locations.LocationTypeId > LocationTypes.Id
+Ref: Employees.LocationId > Locations.Id
+
+Ref: FaultReports.LocationId > Locations.Id
+Ref: FaultReports.ReporterId > Employees.Id
+Ref: FaultReports.FaultTypeId > FaultTypes.Id
+Ref: FaultReports.FaultPriorityId > FaultPriorities.Id
+Ref: FaultReports.FaultStatusId > FaultStatuses.Id
+
+Ref: WorkAssignments.FaultReportId > FaultReports.Id
+Ref: WorkAssignments.TechnicianId > Employees.Id
+Ref: WorkAssignments.AssignedByAppUserId > AppUsers.Id
+
+Ref: Interventions.WorkAssignmentId > WorkAssignments.Id
+Ref: Interventions.InterventionStatusId > InterventionStatuses.Id
+
+Ref: Materials.MaterialUnitId > MaterialUnits.Id
+Ref: InterventionMaterials.InterventionId > Interventions.Id
+Ref: InterventionMaterials.MaterialId > Materials.Id
+
+Ref: Attachments.FaultReportId > FaultReports.Id
+Ref: Attachments.InterventionId > Interventions.Id
+Ref: Attachments.AttachmentPurposeId > AttachmentPurposes.Id
+Ref: Attachments.UploadedByAppUserId > AppUsers.Id
+
+Ref: AppUsers.EmployeeId > Employees.Id
+Ref: AppUserRoles.AppUserId > AppUsers.Id
+Ref: AppUserRoles.AppRoleId > AppRoles.Id
+
+
+// ---------------------------------------------------------------------
+// TABLE GROUPS (samo za preglednost dijagrama)
+// ---------------------------------------------------------------------
+
+TableGroup Lookups {
+  LocationTypes
+  FaultTypes
+  FaultPriorities
+  FaultStatuses
+  InterventionStatuses
+  MaterialUnits
+  AttachmentPurposes
+  AppRoles
+}
+
+TableGroup Core {
+  Locations
+  Employees
+  FaultReports
+}
+
+TableGroup RadIIntervencije {
+  WorkAssignments
+  Interventions
+  Materials
+  InterventionMaterials
+}
+
+TableGroup Privici {
+  Attachments
+}
+
+TableGroup Korisnici {
+  AppUsers
+  AppUserRoles
+}

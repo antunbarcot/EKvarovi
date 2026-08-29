@@ -1,0 +1,180 @@
+@page "/locations"
+@rendermode InteractiveServer
+@using System.Net.Http.Json
+@using EKvarovi.App.Components.Dialogs
+@using EKvarovi.Shared.DTOs
+@inject HttpClient Http
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Lokacije</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Lokacije</MudText>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+           OnClick="OpenCreateDialogAsync" Disabled="_isLoading" Class="mb-4">
+    Nova lokacija
+</MudButton>
+
+@if (_errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_errorMessage</MudAlert>
+}
+
+@if (_isLoading)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+}
+else if (_errorMessage is null)
+{
+    if (_locations.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">Nema unesenih lokacija.</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="_locations" Hover="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Naziv</MudTh>
+                <MudTh>Adresa</MudTh>
+                <MudTh>Tip lokacije</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Akcije</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Naziv">@context.Name</MudTd>
+                <MudTd DataLabel="Adresa">@context.Address</MudTd>
+                <MudTd DataLabel="Tip lokacije">@context.LocationTypeName</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Default)" Size="Size.Small">
+                        @(context.IsActive ? "Aktivna" : "Neaktivna")
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Akcije">
+                    <MudTooltip Text="Uredi">
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                       OnClick="() => OpenEditDialogAsync(context)" />
+                    </MudTooltip>
+                    <MudTooltip Text="Obriši">
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                       OnClick="() => DeleteLocationAsync(context)" />
+                    </MudTooltip>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+}
+
+@code {
+    private List<LocationDto> _locations = new();
+    private List<LookupDto> _locationTypes = new();
+    private bool _isLoading = true;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            var locationsTask = Http.GetFromJsonAsync<List<LocationDto>>("api/locations");
+            var locationTypesTask = Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/location-types");
+            await Task.WhenAll(locationsTask, locationTypesTask);
+
+            _locations = locationsTask.Result ?? new();
+            _locationTypes = locationTypesTask.Result ?? new();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Greška prilikom dohvaćanja lokacija: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OpenCreateDialogAsync()
+    {
+        var parameters = new DialogParameters<LocationEditDialog>
+        {
+            { x => x.Existing, null },
+            { x => x.LocationTypes, _locationTypes }
+        };
+
+        var dialog = await DialogService.ShowAsync<LocationEditDialog>("Nova lokacija", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("Lokacija je spremljena.", Severity.Success);
+            await LoadDataAsync();
+        }
+    }
+
+    private async Task OpenEditDialogAsync(LocationDto location)
+    {
+        var parameters = new DialogParameters<LocationEditDialog>
+        {
+            { x => x.Existing, location },
+            { x => x.LocationTypes, _locationTypes }
+        };
+
+        var dialog = await DialogService.ShowAsync<LocationEditDialog>("Uredi lokaciju", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("Lokacija je spremljena.", Severity.Success);
+            await LoadDataAsync();
+        }
+    }
+
+    private async Task DeleteLocationAsync(LocationDto location)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Potvrda brisanja",
+            $"Jeste li sigurni da želite obrisati lokaciju \"{location.Name}\"?",
+            yesText: "Obriši", cancelText: "Odustani");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var response = await Http.DeleteAsync($"api/locations/{location.Id}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Lokacija je obrisana.", Severity.Success);
+                await LoadDataAsync();
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+            {
+                var message = await response.Content.ReadFromJsonAsync<string>();
+                Snackbar.Add(message ?? "Lokaciju nije moguće obrisati - deaktivirajte je umjesto brisanja.", Severity.Warning);
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                Snackbar.Add("Lokacija više ne postoji.", Severity.Warning);
+                await LoadDataAsync();
+            }
+            else
+            {
+                Snackbar.Add("Greška prilikom brisanja lokacije.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Greška prilikom brisanja lokacije: {ex.Message}", Severity.Error);
+        }
+    }
+}

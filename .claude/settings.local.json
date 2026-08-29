@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -iE \"^\\(yesText|noText|cancelText|title|markupMessage|message\\)$\")",
+      "Bash(dotnet build *)",
+      "Bash(powershell -Command \"Get-Process -Id 11928 | Select-Object Id,ProcessName,Path,StartTime\" 2>&1)",
+      "Bash(powershell -Command \"Stop-Process -Id 11928 -Force\" 2>&1)",
+      "Bash(dotnet run *)",
+      "Bash(powershell -Command \"Get-NetTCPConnection -LocalPort 5153,7094 -ErrorAction SilentlyContinue | Select-Object LocalPort,State,OwningProcess\" 2>&1)",
+      "Bash(powershell -Command \"Get-Process -Id 13020 | Select-Object Id,ProcessName,Path,StartTime\" 2>&1)",
+      "Bash(curl -sk https://localhost:7094/api/lookups/location-types)",
+      "Bash(curl -sk https://localhost:7094/api/locations)",
+      "Bash(curl *)",
+      "Bash(powershell -Command \"Get-Process -Id 15076 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,StartTime\" 2>&1)",
+      "Bash(powershell -Command \"Stop-Process -Id 15076 -Force\" 2>&1)",
+      "Bash(powershell -Command \"Get-Process -Name EKvarovi.Api -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,StartTime\")",
+      "Bash(powershell -Command \"Stop-Process -Id 17940 -Force\" 2>&1)",
+      "Bash(powershell -Command \"Get-Process -Name EKvarovi.Api,EKvarovi.App -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,StartTime\")",
+      "Bash(powershell -Command \"Stop-Process -Id 15456 -Force\" 2>&1)",
+      "Bash(powershell -Command \"Stop-Process -Id 18028 -Force\" 2>&1)",
+      "Bash(powershell -NoProfile -Command \"Get-Process -Id 19344,11736 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,Path\")",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 19344,11736 -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; Get-Process -Id 19344,11736 -ErrorAction SilentlyContinue\")",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 18292,8896 -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1\")",
+      "Read(//c/Users/Administrator/.nuget/packages/mudblazor/**)",
+      "Read(//c//**)",
+      "Bash(dotnet tool *)",
+      "Bash(echo \"started api with pid $!\")",
+      "Bash(powershell -NoProfile -Command \"Get-NetTCPConnection -State Listen | Where-Object {\\\\$_.OwningProcess -in \\(1912,9152\\)} | Select-Object LocalPort,OwningProcess\")"
+    ]
+  }
+}

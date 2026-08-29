@@ -1,0 +1,533 @@
+@page "/fault-reports/{Id:int}"
+@rendermode InteractiveServer
+@using System.Net.Http.Json
+@using EKvarovi.App.Components.Dialogs
+@using EKvarovi.Shared.DTOs
+@inject HttpClient Http
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+
+<PageTitle>Prijava #@Id</PageTitle>
+
+<MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => NavigationManager.NavigateTo("/fault-reports"))" Class="mb-4">
+    Natrag na popis
+</MudButton>
+
+@if (_isLoadingReport)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+}
+else if (_reportErrorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error">@_reportErrorMessage</MudAlert>
+}
+else if (_faultReport is null)
+{
+    <MudAlert Severity="Severity.Warning">Prijava nije pronađena.</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-6" Elevation="1">
+        <MudText Typo="Typo.h5" Class="mb-3">Prijava #@_faultReport.Id</MudText>
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudText Typo="Typo.body1"><strong>Opis:</strong> @_faultReport.Description</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.body2"><strong>Lokacija:</strong> @_faultReport.LocationName</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.body2"><strong>Prijavitelj:</strong> @_faultReport.ReporterName</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.body2"><strong>Tip kvara:</strong> @_faultReport.FaultTypeName</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.body2">
+                    <strong>Prioritet:</strong>
+                    <MudChip T="string" Color="@PriorityColor(_faultReport.FaultPriorityName)" Size="Size.Small">@_faultReport.FaultPriorityName</MudChip>
+                </MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.body2">
+                    <strong>Status:</strong>
+                    <MudChip T="string" Color="@StatusColor(_faultReport.FaultStatusName)" Size="Size.Small">@_faultReport.FaultStatusName</MudChip>
+                </MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.body2"><strong>Rok:</strong> @(_faultReport.DueDate?.ToString("dd.MM.yyyy") ?? "-")</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.body2"><strong>Kreirano:</strong> @_faultReport.CreatedAt.ToString("dd.MM.yyyy HH:mm")</MudText>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudText Typo="Typo.h5" Class="mb-3">Dodjele</MudText>
+
+    @if (!_isLoadingAssignments)
+    {
+        if (!_hasActiveAssignment)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd"
+                       OnClick="OpenAssignDialogAsync" Class="mb-4">
+                Dodijeli izvršitelja
+            </MudButton>
+        }
+        else
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.SwapHoriz"
+                       OnClick="OpenReassignDialogAsync" Class="mb-4">
+                Ponovno dodijeli
+            </MudButton>
+        }
+    }
+
+    @if (_isLoadingAssignments)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    }
+    else if (_assignmentsErrorMessage is not null)
+    {
+        <MudAlert Severity="Severity.Error">@_assignmentsErrorMessage</MudAlert>
+    }
+    else if (_assignments.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">Prijava još nema nijednu dodjelu.</MudAlert>
+    }
+    else
+    {
+        @foreach (var assignment in _assignments.OrderByDescending(a => a.AssignedAt))
+        {
+            <MudPaper Class="pa-3 mb-3" Elevation="2">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.subtitle1">@assignment.TechnicianName</MudText>
+                    @if (assignment.IsActive)
+                    {
+                        <MudChip T="string" Color="Color.Success" Size="Size.Small">Aktivna</MudChip>
+                    }
+                </MudStack>
+                <MudText Typo="Typo.body2">Dodijeljeno: @assignment.AssignedAt.ToString("dd.MM.yyyy HH:mm")</MudText>
+                <MudText Typo="Typo.body2">
+                    @(assignment.UnassignedAt.HasValue
+                        ? $"Deaktivirano: {assignment.UnassignedAt.Value:dd.MM.yyyy HH:mm}"
+                        : "Trenutno aktivna")
+                </MudText>
+                @if (!string.IsNullOrWhiteSpace(assignment.ReassignmentNote))
+                {
+                    <MudText Typo="Typo.body2" Class="mt-1"><em>Napomena: @assignment.ReassignmentNote</em></MudText>
+                }
+            </MudPaper>
+        }
+    }
+
+    <MudText Typo="Typo.h5" Class="mb-3">Intervencije</MudText>
+
+    @if (!_isLoadingInterventions && _activeAssignment is not null && _ongoingIntervention is null)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow"
+                   OnClick="StartInterventionAsync" Disabled="_isStartingIntervention" Class="mb-4">
+            Pokreni intervenciju
+        </MudButton>
+    }
+
+    @if (_isLoadingInterventions)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    }
+    else if (_interventionsErrorMessage is not null)
+    {
+        <MudAlert Severity="Severity.Error">@_interventionsErrorMessage</MudAlert>
+    }
+    else if (_interventions.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">Prijava još nema nijednu intervenciju.</MudAlert>
+    }
+    else
+    {
+        @foreach (var intervention in _interventions.OrderByDescending(i => i.StartedAt))
+        {
+            <MudPaper Class="pa-3 mb-3" Elevation="2">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.subtitle1">@intervention.TechnicianName</MudText>
+                    <MudChip T="string" Color="@InterventionStatusColor(intervention.InterventionStatusName)" Size="Size.Small">
+                        @intervention.InterventionStatusName
+                    </MudChip>
+                </MudStack>
+                <MudText Typo="Typo.body2">Početak: @(intervention.StartedAt?.ToString("dd.MM.yyyy HH:mm") ?? "-")</MudText>
+                <MudText Typo="Typo.body2">Kraj: @(intervention.EndedAt?.ToString("dd.MM.yyyy HH:mm") ?? "-")</MudText>
+                <MudText Typo="Typo.body2">Trajanje: @(intervention.DurationMinutes.HasValue ? $"{intervention.DurationMinutes} min" : "-")</MudText>
+                @if (!string.IsNullOrWhiteSpace(intervention.Notes))
+                {
+                    <MudText Typo="Typo.body2" Class="mt-1"><em>Bilješka: @intervention.Notes</em></MudText>
+                }
+
+                @if (intervention.Materials.Count > 0)
+                {
+                    <MudText Typo="Typo.body2" Class="mt-2"><strong>Utrošeni materijal:</strong></MudText>
+                    <MudList T="string" Dense="true">
+                        @foreach (var material in intervention.Materials)
+                        {
+                            <MudListItem T="string">@material.MaterialName - @material.Quantity @material.MaterialUnitAbbreviation</MudListItem>
+                        }
+                    </MudList>
+                }
+
+                @if (intervention.InterventionStatusName == StatusUTijeku)
+                {
+                    <MudDivider Class="my-3" />
+
+                    <MudStack Row="true" AlignItems="AlignItems.End" Wrap="Wrap.Wrap" Spacing="2" Class="mb-3">
+                        <MudSelect T="int?" @bind-Value="_newMaterialId" Label="Materijal" Style="min-width: 220px;">
+                            @foreach (var material in _materials.Where(m => m.IsActive))
+                            {
+                                <MudSelectItem T="int?" Value="material.Id">@material.Name (@material.MaterialUnitAbbreviation)</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudNumericField T="decimal?" @bind-Value="_newMaterialQuantity" Label="Količina" Min="0.01m" Style="max-width: 140px;" />
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                                   OnClick="@(() => AddMaterialAsync(intervention.Id))" Disabled="_isAddingMaterial">
+                            Dodaj materijal
+                        </MudButton>
+                    </MudStack>
+
+                    @if (_materialErrorMessage is not null)
+                    {
+                        <MudAlert Severity="Severity.Error" Class="mb-3">@_materialErrorMessage</MudAlert>
+                    }
+
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Done"
+                               OnClick="@(() => OpenCompleteDialogAsync(intervention.Id))">
+                        Završi intervenciju
+                    </MudButton>
+                }
+            </MudPaper>
+        }
+    }
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private const string PriorityKritican = "Kritičan";
+    private const string PriorityVisok = "Visok";
+    private const string PrioritySrednji = "Srednji";
+    private const string PriorityNizak = "Nizak";
+
+    private const string StatusUTijeku = "U tijeku";
+
+    private FaultReportDto? _faultReport;
+    private List<WorkAssignmentDto> _assignments = new();
+    private List<LookupDto> _technicians = new();
+    private List<InterventionDto> _interventions = new();
+    private List<MaterialDto> _materials = new();
+
+    private bool _isLoadingReport = true;
+    private bool _isLoadingAssignments = true;
+    private bool _isLoadingInterventions = true;
+    private bool _isStartingIntervention;
+    private bool _isAddingMaterial;
+    private string? _reportErrorMessage;
+    private string? _assignmentsErrorMessage;
+    private string? _interventionsErrorMessage;
+    private string? _materialErrorMessage;
+
+    private int? _newMaterialId;
+    private decimal? _newMaterialQuantity;
+
+    private bool _hasActiveAssignment => _assignments.Any(a => a.IsActive);
+    private WorkAssignmentDto? _activeAssignment => _assignments.FirstOrDefault(a => a.IsActive);
+    private InterventionDto? _ongoingIntervention => _activeAssignment is null
+        ? null
+        : _interventions.FirstOrDefault(i => i.WorkAssignmentId == _activeAssignment.Id && i.InterventionStatusName == StatusUTijeku);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTechniciansAsync();
+        await LoadMaterialsAsync();
+        await LoadFaultReportAsync();
+        await LoadAssignmentsAsync();
+        await LoadInterventionsAsync();
+    }
+
+    private async Task LoadTechniciansAsync()
+    {
+        try
+        {
+            _technicians = await Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/technicians") ?? new();
+        }
+        catch (Exception ex)
+        {
+            _assignmentsErrorMessage = $"Greška prilikom dohvaćanja izvršitelja: {ex.Message}";
+        }
+    }
+
+    private async Task LoadFaultReportAsync()
+    {
+        _isLoadingReport = true;
+        _reportErrorMessage = null;
+
+        try
+        {
+            var response = await Http.GetAsync($"api/fault-reports/{Id}");
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                _faultReport = null;
+            }
+            else if (response.IsSuccessStatusCode)
+            {
+                _faultReport = await response.Content.ReadFromJsonAsync<FaultReportDto>();
+            }
+            else
+            {
+                _reportErrorMessage = $"Greška prilikom dohvaćanja prijave (HTTP {(int)response.StatusCode}).";
+            }
+        }
+        catch (Exception ex)
+        {
+            _reportErrorMessage = $"Greška prilikom dohvaćanja prijave: {ex.Message}";
+        }
+        finally
+        {
+            _isLoadingReport = false;
+        }
+    }
+
+    private async Task LoadAssignmentsAsync()
+    {
+        _isLoadingAssignments = true;
+        _assignmentsErrorMessage = null;
+
+        try
+        {
+            _assignments = await Http.GetFromJsonAsync<List<WorkAssignmentDto>>($"api/work-assignments?faultReportId={Id}") ?? new();
+        }
+        catch (Exception ex)
+        {
+            _assignmentsErrorMessage = $"Greška prilikom dohvaćanja dodjela: {ex.Message}";
+        }
+        finally
+        {
+            _isLoadingAssignments = false;
+        }
+    }
+
+    private async Task OpenAssignDialogAsync()
+    {
+        var parameters = new DialogParameters<AssignTechnicianDialog>
+        {
+            { x => x.FaultReportId, Id },
+            { x => x.Technicians, _technicians }
+        };
+
+        var dialog = await DialogService.ShowAsync<AssignTechnicianDialog>("Dodijeli izvršitelja", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("Prijava je dodijeljena izvršitelju.", Severity.Success);
+            await LoadFaultReportAsync();
+            await LoadAssignmentsAsync();
+            await LoadInterventionsAsync();
+        }
+    }
+
+    private async Task OpenReassignDialogAsync()
+    {
+        var parameters = new DialogParameters<ReassignTechnicianDialog>
+        {
+            { x => x.FaultReportId, Id },
+            { x => x.Technicians, _technicians }
+        };
+
+        var dialog = await DialogService.ShowAsync<ReassignTechnicianDialog>("Ponovno dodijeli izvršitelja", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("Prijava je ponovno dodijeljena.", Severity.Success);
+            await LoadFaultReportAsync();
+            await LoadAssignmentsAsync();
+            await LoadInterventionsAsync();
+        }
+    }
+
+    private async Task LoadMaterialsAsync()
+    {
+        try
+        {
+            _materials = await Http.GetFromJsonAsync<List<MaterialDto>>("api/materials") ?? new();
+        }
+        catch (Exception ex)
+        {
+            _materialErrorMessage = $"Greška prilikom dohvaćanja materijala: {ex.Message}";
+        }
+    }
+
+    private async Task LoadInterventionsAsync()
+    {
+        _isLoadingInterventions = true;
+        _interventionsErrorMessage = null;
+
+        try
+        {
+            _interventions = await Http.GetFromJsonAsync<List<InterventionDto>>($"api/interventions?faultReportId={Id}") ?? new();
+        }
+        catch (Exception ex)
+        {
+            _interventionsErrorMessage = $"Greška prilikom dohvaćanja intervencija: {ex.Message}";
+        }
+        finally
+        {
+            _isLoadingInterventions = false;
+        }
+    }
+
+    private async Task StartInterventionAsync()
+    {
+        if (_activeAssignment is null)
+        {
+            return;
+        }
+
+        _isStartingIntervention = true;
+        _interventionsErrorMessage = null;
+
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/interventions", new StartInterventionDto { WorkAssignmentId = _activeAssignment.Id });
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Intervencija je pokrenuta.", Severity.Success);
+                await LoadFaultReportAsync();
+                await LoadInterventionsAsync();
+            }
+            else
+            {
+                var message = await ReadErrorMessageAsync(response);
+                Snackbar.Add(message, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Greška prilikom pokretanja intervencije: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isStartingIntervention = false;
+        }
+    }
+
+    private async Task AddMaterialAsync(int interventionId)
+    {
+        _materialErrorMessage = null;
+
+        if (_newMaterialId is null || _newMaterialQuantity is null || _newMaterialQuantity <= 0)
+        {
+            _materialErrorMessage = "Odaberite materijal i unesite količinu veću od nule.";
+            return;
+        }
+
+        _isAddingMaterial = true;
+
+        try
+        {
+            var dto = new AddInterventionMaterialDto { MaterialId = _newMaterialId.Value, Quantity = _newMaterialQuantity.Value };
+            var response = await Http.PostAsJsonAsync($"api/interventions/{interventionId}/materials", dto);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var updated = await Http.GetFromJsonAsync<InterventionDto>($"api/interventions/{interventionId}");
+                if (updated is not null)
+                {
+                    var index = _interventions.FindIndex(i => i.Id == interventionId);
+                    if (index >= 0)
+                    {
+                        _interventions[index] = updated;
+                    }
+                }
+
+                _newMaterialId = null;
+                _newMaterialQuantity = null;
+                Snackbar.Add("Materijal je dodan.", Severity.Success);
+            }
+            else
+            {
+                _materialErrorMessage = await ReadErrorMessageAsync(response);
+            }
+        }
+        catch (Exception ex)
+        {
+            _materialErrorMessage = $"Greška prilikom dodavanja materijala: {ex.Message}";
+        }
+        finally
+        {
+            _isAddingMaterial = false;
+        }
+    }
+
+    private async Task OpenCompleteDialogAsync(int interventionId)
+    {
+        var parameters = new DialogParameters<CompleteInterventionDialog>
+        {
+            { x => x.InterventionId, interventionId }
+        };
+
+        var dialog = await DialogService.ShowAsync<CompleteInterventionDialog>("Završi intervenciju", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("Intervencija je završena.", Severity.Success);
+            await LoadFaultReportAsync();
+            await LoadInterventionsAsync();
+        }
+    }
+
+    private static async Task<string> ReadErrorMessageAsync(HttpResponseMessage response)
+    {
+        try
+        {
+            var message = await response.Content.ReadFromJsonAsync<string>();
+            return string.IsNullOrWhiteSpace(message)
+                ? $"Greška (HTTP {(int)response.StatusCode})."
+                : message;
+        }
+        catch
+        {
+            return $"Greška (HTTP {(int)response.StatusCode}).";
+        }
+    }
+
+    private static Color InterventionStatusColor(string? statusName) => statusName switch
+    {
+        "Planirana" => Color.Default,
+        "U tijeku" => Color.Info,
+        "Završena" => Color.Success,
+        "Neuspješna" => Color.Error,
+        _ => Color.Default
+    };
+
+    private static Color PriorityColor(string? priorityName) => priorityName switch
+    {
+        PriorityKritican => Color.Error,
+        PriorityVisok => Color.Warning,
+        PrioritySrednji => Color.Info,
+        PriorityNizak => Color.Success,
+        _ => Color.Default
+    };
+
+    private static Color StatusColor(string? statusName) => statusName switch
+    {
+        "Zaprimljeno" => Color.Default,
+        "Pregledano" => Color.Info,
+        "Dodijeljeno" => Color.Info,
+        "U radu" => Color.Warning,
+        "Riješeno" => Color.Success,
+        "Zatvoreno" => Color.Dark,
+        _ => Color.Default
+    };
+}

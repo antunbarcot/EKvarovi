@@ -1,0 +1,191 @@
+@page "/employees"
+@rendermode InteractiveServer
+@using System.Net.Http.Json
+@using EKvarovi.App.Components.Dialogs
+@using EKvarovi.Shared.DTOs
+@inject HttpClient Http
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Zaposlenici</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Zaposlenici</MudText>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+           OnClick="OpenCreateDialogAsync" Disabled="_isLoading" Class="mb-4">
+    Novi zaposlenik
+</MudButton>
+
+@if (_errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_errorMessage</MudAlert>
+}
+
+@if (_isLoading)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+}
+else if (_errorMessage is null)
+{
+    if (_employees.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">Nema unesenih zaposlenika.</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="_employees" Hover="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Ime i prezime</MudTh>
+                <MudTh>Email</MudTh>
+                <MudTh>Lokacija</MudTh>
+                <MudTh>Uloge</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Akcije</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Ime i prezime">@context.FirstName @context.LastName</MudTd>
+                <MudTd DataLabel="Email">@context.Email</MudTd>
+                <MudTd DataLabel="Lokacija">@context.LocationName</MudTd>
+                <MudTd DataLabel="Uloge">
+                    @if (context.IsReporter)
+                    {
+                        <MudChip T="string" Color="Color.Info" Size="Size.Small">Prijavitelj</MudChip>
+                    }
+                    @if (context.IsTechnician)
+                    {
+                        <MudChip T="string" Color="Color.Tertiary" Size="Size.Small">Izvršitelj</MudChip>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Default)" Size="Size.Small">
+                        @(context.IsActive ? "Aktivan" : "Neaktivan")
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Akcije">
+                    <MudTooltip Text="Uredi">
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                       OnClick="() => OpenEditDialogAsync(context)" />
+                    </MudTooltip>
+                    <MudTooltip Text="Obriši">
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                       OnClick="() => DeleteEmployeeAsync(context)" />
+                    </MudTooltip>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+}
+
+@code {
+    private List<EmployeeDto> _employees = new();
+    private List<LookupDto> _locations = new();
+    private bool _isLoading = true;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            var employeesTask = Http.GetFromJsonAsync<List<EmployeeDto>>("api/employees");
+            var locationsTask = Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/locations");
+            await Task.WhenAll(employeesTask, locationsTask);
+
+            _employees = employeesTask.Result ?? new();
+            _locations = locationsTask.Result ?? new();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Greška prilikom dohvaćanja zaposlenika: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OpenCreateDialogAsync()
+    {
+        var parameters = new DialogParameters<EmployeeEditDialog>
+        {
+            { x => x.Existing, null },
+            { x => x.Locations, _locations }
+        };
+
+        var dialog = await DialogService.ShowAsync<EmployeeEditDialog>("Novi zaposlenik", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("Zaposlenik je spremljen.", Severity.Success);
+            await LoadDataAsync();
+        }
+    }
+
+    private async Task OpenEditDialogAsync(EmployeeDto employee)
+    {
+        var parameters = new DialogParameters<EmployeeEditDialog>
+        {
+            { x => x.Existing, employee },
+            { x => x.Locations, _locations }
+        };
+
+        var dialog = await DialogService.ShowAsync<EmployeeEditDialog>("Uredi zaposlenika", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("Zaposlenik je spremljen.", Severity.Success);
+            await LoadDataAsync();
+        }
+    }
+
+    private async Task DeleteEmployeeAsync(EmployeeDto employee)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Potvrda brisanja",
+            $"Jeste li sigurni da želite obrisati zaposlenika \"{employee.FirstName} {employee.LastName}\"?",
+            yesText: "Obriši", cancelText: "Odustani");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var response = await Http.DeleteAsync($"api/employees/{employee.Id}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Zaposlenik je obrisan.", Severity.Success);
+                await LoadDataAsync();
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+            {
+                var message = await response.Content.ReadFromJsonAsync<string>();
+                Snackbar.Add(message ?? "Zaposlenika nije moguće obrisati - deaktivirajte ga umjesto brisanja.", Severity.Warning);
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                Snackbar.Add("Zaposlenik više ne postoji.", Severity.Warning);
+                await LoadDataAsync();
+            }
+            else
+            {
+                Snackbar.Add("Greška prilikom brisanja zaposlenika.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Greška prilikom brisanja zaposlenika: {ex.Message}", Severity.Error);
+        }
+    }
+}

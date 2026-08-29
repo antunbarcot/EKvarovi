@@ -1,0 +1,91 @@
+@using System.Net.Http.Json
+@using EKvarovi.Shared.DTOs
+@inject HttpClient Http
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" Model="_model">
+            <MudRadioGroup T="bool" @bind-Value="_model.IsSuccessful">
+                <MudRadio T="bool" Value="true" Color="Color.Success">Uspješno</MudRadio>
+                <MudRadio T="bool" Value="false" Color="Color.Error">Neuspješno</MudRadio>
+            </MudRadioGroup>
+            <MudTextField T="string" @bind-Value="_model.Notes" Label="Bilješka" Required="true"
+                          RequiredError="Bilješka je obavezna" Lines="3" Class="mt-3" />
+            <MudNumericField T="int?" @bind-Value="_model.DurationMinutes" Label="Trajanje (min)"
+                              Min="0" HelperText="Ostavi prazno za automatski izračun" Class="mt-3" />
+        </MudForm>
+
+        @if (_errorMessage is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_errorMessage</MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="_isSaving">
+            Završi intervenciju
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public int InterventionId { get; set; }
+
+    private MudForm _form = null!;
+    private CompleteInterventionDto _model = new() { IsSuccessful = true };
+    private string? _errorMessage;
+    private bool _isSaving;
+
+    private async Task SubmitAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        _errorMessage = null;
+
+        try
+        {
+            var response = await Http.PutAsJsonAsync($"api/interventions/{InterventionId}/complete", _model);
+
+            if (response.IsSuccessStatusCode)
+            {
+                MudDialog.Close(DialogResult.Ok(true));
+            }
+            else
+            {
+                _errorMessage = await ReadErrorMessageAsync(response);
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Greška prilikom završavanja intervencije: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private static async Task<string> ReadErrorMessageAsync(HttpResponseMessage response)
+    {
+        try
+        {
+            var message = await response.Content.ReadFromJsonAsync<string>();
+            return string.IsNullOrWhiteSpace(message)
+                ? $"Greška prilikom završavanja (HTTP {(int)response.StatusCode})."
+                : message;
+        }
+        catch
+        {
+            return $"Greška prilikom završavanja (HTTP {(int)response.StatusCode}).";
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

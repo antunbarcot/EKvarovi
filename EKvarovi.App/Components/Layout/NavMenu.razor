@@ -42,15 +42,24 @@
             </MudNavLink>
         }
 
-        <MudDivider Class="my-2" />
+        @if (CurrentUserService.IsInRole("Reporter") || CurrentUserService.IsInRole("Technician"))
+        {
+            <MudDivider Class="my-2" />
+        }
 
-        <MudNavLink Href="/my-reports" Icon="@Icons.Material.Filled.AssignmentTurnedIn">
-            Moje prijave
-        </MudNavLink>
+        @if (CurrentUserService.IsInRole("Reporter"))
+        {
+            <MudNavLink Href="/my-reports" Icon="@Icons.Material.Filled.AssignmentTurnedIn">
+                Moje prijave
+            </MudNavLink>
+        }
 
-        <MudNavLink Href="/my-assignments" Icon="@Icons.Material.Filled.Engineering">
-            Moji nalozi
-        </MudNavLink>
+        @if (CurrentUserService.IsInRole("Technician"))
+        {
+            <MudNavLink Href="/my-assignments" Icon="@Icons.Material.Filled.Engineering">
+                Moji nalozi
+            </MudNavLink>
+        }
 
         @if (CurrentUserService.IsInRole("Admin"))
         {

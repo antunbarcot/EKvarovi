@@ -1,0 +1,133 @@
+@page "/my-assignments"
+@rendermode InteractiveServer
+@using System.Net.Http.Json
+@using EKvarovi.Shared.DTOs
+@inject HttpClient Http
+@inject CurrentUserService CurrentUserService
+
+<PageTitle>Moji nalozi</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Moji nalozi</MudText>
+
+@if (_isLoading)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+}
+else if (!_hasAccess)
+{
+    @* Prava zastita je vec [Authorize(Roles="Technician")] na api/work-assignments/mine -
+       ovo je samo UX zastita da korisnik bez uloge Technician ne gleda praznu stranicu. *@
+    <MudAlert Severity="Severity.Warning">Nemate pristup ovoj stranici.</MudAlert>
+}
+else if (_errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error">@_errorMessage</MudAlert>
+}
+else if (_assignments.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">Nemate trenutno aktivnih naloga.</MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (var view in _assignments)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Elevation="2">
+                    <MudCardContent>
+                        @* Technician nema pristup GET api/fault-reports/{id} (samo Admin/Manager),
+                           pa ovdje namjerno prikazujemo detalje izravno (bez klikabilnog linka na
+                           /fault-reports/{id} koji bi za njega zavrsio 403-om). *@
+                        <MudText Typo="Typo.subtitle1">@view.Assignment.FaultReportDescription</MudText>
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary">@view.Assignment.LocationName</MudText>
+
+                        <MudText Typo="Typo.caption" Class="mt-3 d-block">Dodijeljeno</MudText>
+                        <MudText Typo="Typo.body2">@view.Assignment.AssignedAt.ToString("dd.MM.yyyy HH:mm")</MudText>
+
+                        <MudText Typo="Typo.caption" Class="mt-3 d-block">Intervencija</MudText>
+                        <MudChip T="string" Color="@InterventionColor(view.CurrentInterventionStatus)" Size="Size.Small">
+                            @(view.CurrentInterventionStatus ?? "Nema pokrenute")
+                        </MudChip>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private sealed class AssignmentView
+    {
+        public WorkAssignmentDto Assignment { get; init; } = null!;
+        public string? CurrentInterventionStatus { get; init; }
+    }
+
+    private List<AssignmentView> _assignments = new();
+    private bool _isLoading = true;
+    private bool _hasAccess;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Bez ovoga bi provjera uloge ispod mogla ispasti pogresna - CurrentUserService
+        // svoje stanje (Roles, EmployeeId) ucitava asinkrono iz sessionStorage.
+        await CurrentUserService.EnsureInitializedAsync();
+        _hasAccess = CurrentUserService.IsInRole("Technician");
+
+        if (_hasAccess)
+        {
+            await LoadDataAsync();
+        }
+        else
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            // Napomena: NE saljemo nikakav ID - server identitet cita iskljucivo iz
+            // JWT "EmployeeId" claima (vidi GET api/work-assignments/mine na API-ju).
+            var assignments = await Http.GetFromJsonAsync<List<WorkAssignmentDto>>("api/work-assignments/mine") ?? new();
+
+            var views = new List<AssignmentView>();
+            foreach (var assignment in assignments)
+            {
+                var interventions = await Http.GetFromJsonAsync<List<InterventionDto>>(
+                    $"api/interventions?workAssignmentId={assignment.Id}") ?? new();
+
+                var current = interventions.FirstOrDefault(i => i.InterventionStatusName == "U tijeku")
+                    ?? interventions.OrderByDescending(i => i.StartedAt).FirstOrDefault();
+
+                views.Add(new AssignmentView
+                {
+                    Assignment = assignment,
+                    CurrentInterventionStatus = current?.InterventionStatusName
+                });
+            }
+
+            _assignments = views;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Greška prilikom dohvaćanja naloga: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static Color InterventionColor(string? statusName) => statusName switch
+    {
+        "U tijeku" => Color.Warning,
+        "Završena" => Color.Success,
+        "Neuspješna" => Color.Error,
+        _ => Color.Default
+    };
+}

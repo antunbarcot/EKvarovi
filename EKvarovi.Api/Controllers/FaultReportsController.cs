@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using EKvarovi.Api.Auth;
 using EKvarovi.Api.Data;
 using EKvarovi.Shared.DTOs;
 using EKvarovi.Shared.Models;
@@ -91,6 +92,27 @@ public class FaultReportsController : ControllerBase
         query = ApplySorting(query, parameters.SortBy, parameters.SortDescending);
 
         var faultReports = await query
+            .Select(ToDtoProjection)
+            .ToListAsync();
+
+        return Ok(faultReports);
+    }
+
+    // Identitet se cita ISKLJUCIVO iz JWT "EmployeeId" claima, nikad iz parametra koji
+    // salje klijent - inace bi Reporter mogao poslati tudi Id i vidjeti tude prijave.
+    [HttpGet("mine")]
+    [Authorize(Roles = "Reporter")]
+    public async Task<ActionResult<List<FaultReportDto>>> GetMyFaultReports()
+    {
+        var employeeId = User.GetEmployeeId();
+        if (employeeId is null)
+        {
+            return BadRequest("Račun nije povezan s prijaviteljem.");
+        }
+
+        var faultReports = await _context.FaultReports
+            .Where(fr => fr.ReporterId == employeeId.Value)
+            .OrderByDescending(fr => fr.CreatedAt)
             .Select(ToDtoProjection)
             .ToListAsync();
 

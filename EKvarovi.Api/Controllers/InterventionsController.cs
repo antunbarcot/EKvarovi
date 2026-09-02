@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using EKvarovi.Api.Auth;
 using EKvarovi.Api.Data;
 using EKvarovi.Shared.DTOs;
 using EKvarovi.Shared.Models;
@@ -136,6 +137,12 @@ public class InterventionsController : ControllerBase
             return NotFound($"Nalog s Id={dto.WorkAssignmentId} ne postoji.");
         }
 
+        var ownershipError = EnsureTechnicianOwnsAssignment(workAssignment.TechnicianId);
+        if (ownershipError is not null)
+        {
+            return ownershipError;
+        }
+
         if (!workAssignment.IsActive)
         {
             return BadRequest("Intervencija se može pokrenuti samo na aktivnom nalogu.");
@@ -207,6 +214,12 @@ public class InterventionsController : ControllerBase
             return NotFound();
         }
 
+        var ownershipError = EnsureTechnicianOwnsAssignment(intervention.WorkAssignment?.TechnicianId);
+        if (ownershipError is not null)
+        {
+            return ownershipError;
+        }
+
         if (intervention.InterventionStatus?.Name != InterventionStatusUTijeku)
         {
             return BadRequest("Samo intervencija u statusu \"U tijeku\" se može završiti.");
@@ -275,11 +288,18 @@ public class InterventionsController : ControllerBase
     {
         var intervention = await _context.Interventions
             .Include(i => i.InterventionStatus)
+            .Include(i => i.WorkAssignment)
             .FirstOrDefaultAsync(i => i.Id == id);
 
         if (intervention is null)
         {
             return NotFound($"Intervencija s Id={id} ne postoji.");
+        }
+
+        var ownershipError = EnsureTechnicianOwnsAssignment(intervention.WorkAssignment?.TechnicianId);
+        if (ownershipError is not null)
+        {
+            return ownershipError;
         }
 
         if (intervention.InterventionStatus?.Name != InterventionStatusUTijeku)
@@ -344,11 +364,18 @@ public class InterventionsController : ControllerBase
     {
         var intervention = await _context.Interventions
             .Include(i => i.InterventionStatus)
+            .Include(i => i.WorkAssignment)
             .FirstOrDefaultAsync(i => i.Id == id);
 
         if (intervention is null)
         {
             return NotFound($"Intervencija s Id={id} ne postoji.");
+        }
+
+        var ownershipError = EnsureTechnicianOwnsAssignment(intervention.WorkAssignment?.TechnicianId);
+        if (ownershipError is not null)
+        {
+            return ownershipError;
         }
 
         if (intervention.InterventionStatus?.Name != InterventionStatusUTijeku)
@@ -367,6 +394,25 @@ public class InterventionsController : ControllerBase
         await _context.SaveChangesAsync();
 
         return NoContent();
+    }
+
+    // "Izvrsitelj smije mijenjati samo svoj aktivni nalog" - Admin/Manager zaobilaze ovu
+    // provjeru (vec pokriveno [Authorize] na klasi), za Technician identitet se cita
+    // ISKLJUCIVO iz JWT "EmployeeId" claima, nikad iz parametra koji salje klijent.
+    private ActionResult? EnsureTechnicianOwnsAssignment(int? assignmentTechnicianId)
+    {
+        if (User.IsInRole("Admin") || User.IsInRole("Manager"))
+        {
+            return null;
+        }
+
+        var employeeId = User.GetEmployeeId();
+        if (employeeId is null || assignmentTechnicianId is null || employeeId != assignmentTechnicianId)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, "Možete raditi samo na svojim dodijeljenim nalozima.");
+        }
+
+        return null;
     }
 
     private static IQueryable<Intervention> ApplySorting(IQueryable<Intervention> query, string? sortBy, bool sortDescending)

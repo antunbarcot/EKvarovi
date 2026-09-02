@@ -1,0 +1,170 @@
+@page "/my-reports"
+@rendermode InteractiveServer
+@using System.Net.Http.Json
+@using EKvarovi.App.Components.Dialogs
+@using EKvarovi.Shared.DTOs
+@inject HttpClient Http
+@inject CurrentUserService CurrentUserService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Moje prijave</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Moje prijave</MudText>
+
+@if (_isLoading)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+}
+else if (!_hasAccess)
+{
+    @* Prava zastita je vec [Authorize(Roles="Reporter")] na api/fault-reports/mine -
+       ovo je samo UX zastita da korisnik bez uloge Reporter ne gleda praznu stranicu. *@
+    <MudAlert Severity="Severity.Warning">Nemate pristup ovoj stranici.</MudAlert>
+}
+else
+{
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+               OnClick="OpenCreateDialogAsync" Class="mb-4">
+        Nova prijava
+    </MudButton>
+
+    @if (_errorMessage is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">@_errorMessage</MudAlert>
+    }
+    else if (_reports.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">Nemate prijavljenih kvarova.</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="_reports" Hover="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Opis</MudTh>
+                <MudTh>Lokacija</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Tip / Prioritet</MudTh>
+                <MudTh>Rok</MudTh>
+                <MudTh>Kreirano</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Opis">
+                    <MudTooltip Text="@context.Description">
+                        <span>@Truncate(context.Description)</span>
+                    </MudTooltip>
+                </MudTd>
+                <MudTd DataLabel="Lokacija">@context.LocationName</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Color="@StatusColor(context.FaultStatusName)" Size="Size.Small">
+                        @context.FaultStatusName
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Tip / Prioritet">
+                    @(string.IsNullOrWhiteSpace(context.FaultTypeName) ? "Nije određeno" : context.FaultTypeName)
+                    /
+                    @(string.IsNullOrWhiteSpace(context.FaultPriorityName) ? "Nije određeno" : context.FaultPriorityName)
+                </MudTd>
+                <MudTd DataLabel="Rok">@(context.DueDate?.ToString("dd.MM.yyyy") ?? "-")</MudTd>
+                <MudTd DataLabel="Kreirano">@context.CreatedAt.ToString("dd.MM.yyyy HH:mm")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+}
+
+@code {
+    private List<FaultReportDto> _reports = new();
+    private List<LookupDto> _locations = new();
+    private bool _isLoading = true;
+    private bool _hasAccess;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Bez ovoga bi provjera uloge ispod mogla ispasti pogresna - CurrentUserService
+        // svoje stanje (Roles, EmployeeId) ucitava asinkrono iz sessionStorage.
+        await CurrentUserService.EnsureInitializedAsync();
+        _hasAccess = CurrentUserService.IsInRole("Reporter");
+
+        if (_hasAccess)
+        {
+            await LoadDataAsync();
+        }
+        else
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            // Napomena: NE saljemo nikakav ID - server identitet cita iskljucivo iz
+            // JWT "EmployeeId" claima (vidi GET api/fault-reports/mine na API-ju).
+            var reportsTask = Http.GetFromJsonAsync<List<FaultReportDto>>("api/fault-reports/mine");
+            var locationsTask = Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/locations");
+            await Task.WhenAll(reportsTask, locationsTask);
+
+            _reports = reportsTask.Result ?? new();
+            _locations = locationsTask.Result ?? new();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Greška prilikom dohvaćanja prijava: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OpenCreateDialogAsync()
+    {
+        // Isti dijalog kao na FaultReports.razor, ali "Prijavitelj" dropdown dobiva
+        // SAMO trenutnog korisnika - Reporter tako uvijek prijavljuje u svoje ime.
+        var selfAsReporter = new List<LookupDto>();
+        if (CurrentUserService.EmployeeId.HasValue)
+        {
+            selfAsReporter.Add(new LookupDto
+            {
+                Id = CurrentUserService.EmployeeId.Value,
+                Name = CurrentUserService.DisplayName ?? CurrentUserService.Email ?? "Ja"
+            });
+        }
+
+        var parameters = new DialogParameters<NewFaultReportDialog>
+        {
+            { x => x.Locations, _locations },
+            { x => x.Reporters, selfAsReporter }
+        };
+
+        var dialog = await DialogService.ShowAsync<NewFaultReportDialog>("Nova prijava kvara", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("Prijava je spremljena.", Severity.Success);
+            await LoadDataAsync();
+        }
+    }
+
+    private static string Truncate(string text, int maxLength = 60)
+    {
+        return text.Length > maxLength ? text[..maxLength] + "…" : text;
+    }
+
+    private static Color StatusColor(string statusName) => statusName switch
+    {
+        "Zaprimljeno" => Color.Default,
+        "Pregledano" => Color.Info,
+        "Dodijeljeno" => Color.Info,
+        "U radu" => Color.Warning,
+        "Riješeno" => Color.Success,
+        "Zatvoreno" => Color.Dark,
+        _ => Color.Default
+    };
+}

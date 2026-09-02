@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using EKvarovi.Api.Auth;
 using EKvarovi.Api.Data;
 using EKvarovi.Shared.DTOs;
 using EKvarovi.Shared.Models;
@@ -61,6 +62,28 @@ public class WorkAssignmentsController : ControllerBase
         }
 
         var workAssignments = await query
+            .OrderByDescending(wa => wa.AssignedAt)
+            .Select(ToDtoProjection)
+            .ToListAsync();
+
+        return Ok(workAssignments);
+    }
+
+    // Identitet se cita ISKLJUCIVO iz JWT "EmployeeId" claima, nikad iz parametra koji
+    // salje klijent. Samo AKTIVNE dodjele - Technician ovdje treba svoj trenutni posao,
+    // ne cijelu povijest (za to postoji opci GET s faultReportId filterom).
+    [HttpGet("mine")]
+    [Authorize(Roles = "Technician")]
+    public async Task<ActionResult<List<WorkAssignmentDto>>> GetMyWorkAssignments()
+    {
+        var employeeId = User.GetEmployeeId();
+        if (employeeId is null)
+        {
+            return BadRequest("Račun nije povezan s izvršiteljem.");
+        }
+
+        var workAssignments = await _context.WorkAssignments
+            .Where(wa => wa.TechnicianId == employeeId.Value && wa.IsActive)
             .OrderByDescending(wa => wa.AssignedAt)
             .Select(ToDtoProjection)
             .ToListAsync();

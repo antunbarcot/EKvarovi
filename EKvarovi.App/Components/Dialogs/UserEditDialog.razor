@@ -1,0 +1,172 @@
+@using System.Net.Http.Json
+@using EKvarovi.Shared.DTOs
+@inject HttpClient Http
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" Model="_model">
+            <MudTextField T="string" @bind-Value="_model.Email" Label="Email" Required="true"
+                          RequiredError="Email je obavezan" InputType="InputType.Email" />
+            <MudTextField T="string" @bind-Value="_model.DisplayName" Label="Prikazno ime" Class="mt-3" />
+            <MudTextField T="string" @bind-Value="_model.Password" Label="@PasswordLabel"
+                          InputType="InputType.Password" Class="mt-3" />
+
+            <MudText Typo="Typo.subtitle2" Class="mt-4 mb-1">Uloge</MudText>
+            @foreach (var role in Roles)
+            {
+                <MudCheckBox T="bool" Value="_selectedRoleIds.Contains(role.Id)"
+                             ValueChanged="@(isChecked => ToggleRole(role.Id, isChecked))"
+                             Label="@role.Name" Color="Color.Primary" />
+            }
+
+            <MudSelect T="int?" @bind-Value="_model.EmployeeId" Label="Povezani zaposlenik" Class="mt-3" Clearable="true">
+                @foreach (var employee in Employees)
+                {
+                    <MudSelectItem T="int?" Value="employee.Id">@employee.Name</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudSwitch T="bool" @bind-Value="_model.IsActive" Label="Aktivan" Color="Color.Primary" Class="mt-3" />
+        </MudForm>
+
+        @if (_errorMessage is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_errorMessage</MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="_isSaving">
+            Spremi
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public UserAdminDto? Existing { get; set; }
+    [Parameter] public List<LookupDto> Roles { get; set; } = new();
+    [Parameter] public List<LookupDto> Employees { get; set; } = new();
+
+    private MudForm _form = null!;
+    private SaveUserAdminDto _model = new() { IsActive = true };
+    private HashSet<int> _selectedRoleIds = new();
+    private string? _errorMessage;
+    private bool _isSaving;
+
+    private string PasswordLabel => Existing is null
+        ? "Lozinka"
+        : "Nova lozinka (ostavi prazno za zadržavanje postojeće)";
+
+    protected override void OnInitialized()
+    {
+        if (Existing is not null)
+        {
+            _model = new SaveUserAdminDto
+            {
+                Email = Existing.Email,
+                DisplayName = Existing.DisplayName,
+                IsActive = Existing.IsActive,
+                EmployeeId = Existing.EmployeeId
+            };
+
+            // UserAdminDto nosi samo NAZIVE uloga (ne Id-eve) - mapiramo natrag na
+            // Id preko Roles parametra da checkbox lista zna sto je vec oznaceno.
+            _selectedRoleIds = Roles
+                .Where(r => Existing.Roles.Contains(r.Name, StringComparer.OrdinalIgnoreCase))
+                .Select(r => r.Id)
+                .ToHashSet();
+        }
+    }
+
+    private void ToggleRole(int roleId, bool isChecked)
+    {
+        if (isChecked)
+        {
+            _selectedRoleIds.Add(roleId);
+        }
+        else
+        {
+            _selectedRoleIds.Remove(roleId);
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        if (Existing is null && string.IsNullOrWhiteSpace(_model.Password))
+        {
+            _errorMessage = "Lozinka je obavezna kod kreiranja korisnika.";
+            return;
+        }
+
+        if (_selectedRoleIds.Count == 0)
+        {
+            _errorMessage = "Odaberite barem jednu ulogu.";
+            return;
+        }
+
+        _model.RoleIds = _selectedRoleIds.ToList();
+
+        _isSaving = true;
+        _errorMessage = null;
+
+        try
+        {
+            var response = Existing is null
+                ? await Http.PostAsJsonAsync("api/users", _model)
+                : await Http.PutAsJsonAsync($"api/users/{Existing.Id}", _model);
+
+            if (response.IsSuccessStatusCode)
+            {
+                MudDialog.Close(DialogResult.Ok(true));
+            }
+            else
+            {
+                _errorMessage = await ReadErrorMessageAsync(response);
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Greška prilikom spremanja korisnika: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private static async Task<string> ReadErrorMessageAsync(HttpResponseMessage response)
+    {
+        // API-jev BadRequest(string) stize kao goli "text/plain" (ne "application/json"),
+        // pa ReadFromJsonAsync<string>() ovdje puca ("'X' is an invalid start of a value").
+        // ReadAsStringAsync radi za oba slucaja - i za goli tekst i za JSON-citiran string.
+        var raw = await response.Content.ReadAsStringAsync();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return $"Greška prilikom spremanja (HTTP {(int)response.StatusCode}).";
+        }
+
+        if (raw.Length >= 2 && raw[0] == '"' && raw[^1] == '"')
+        {
+            try
+            {
+                return System.Text.Json.JsonSerializer.Deserialize<string>(raw) ?? raw;
+            }
+            catch
+            {
+                // padne na goli tekst ispod
+            }
+        }
+
+        return raw;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

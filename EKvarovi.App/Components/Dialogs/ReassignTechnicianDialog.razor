@@ -76,17 +76,28 @@
 
     private static async Task<string> ReadErrorMessageAsync(HttpResponseMessage response)
     {
-        try
-        {
-            var message = await response.Content.ReadFromJsonAsync<string>();
-            return string.IsNullOrWhiteSpace(message)
-                ? $"Greška prilikom ponovne dodjele (HTTP {(int)response.StatusCode})."
-                : message;
-        }
-        catch
+        // API-jev BadRequest(string) stize kao goli "text/plain" (ne "application/json"),
+        // pa ReadFromJsonAsync<string>() ovdje puca ("'X' is an invalid start of a value").
+        // ReadAsStringAsync radi za oba slucaja - i za goli tekst i za JSON-citiran string.
+        var raw = await response.Content.ReadAsStringAsync();
+        if (string.IsNullOrWhiteSpace(raw))
         {
             return $"Greška prilikom ponovne dodjele (HTTP {(int)response.StatusCode}).";
         }
+
+        if (raw.Length >= 2 && raw[0] == '"' && raw[^1] == '"')
+        {
+            try
+            {
+                return System.Text.Json.JsonSerializer.Deserialize<string>(raw) ?? raw;
+            }
+            catch
+            {
+                // padne na goli tekst ispod
+            }
+        }
+
+        return raw;
     }
 
     private void Cancel() => MudDialog.Cancel();

@@ -69,83 +69,73 @@
     <MudAlert Severity="Severity.Error" Class="mb-4">@_errorMessage</MudAlert>
 }
 
-@if (_isLoading)
-{
-    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
-}
-else if (_errorMessage is null)
-{
-    if (_faultReports.Count == 0)
-    {
+<MudTable T="FaultReportDto" ServerData="ServerReloadAsync" @ref="_table" Hover="true" Striped="true"
+          OnRowClick="@((TableRowClickEventArgs<FaultReportDto> args) => NavigationManager.NavigateTo($"/fault-reports/{args.Item.Id}"))" RowStyle="cursor: pointer;">
+    <HeaderContent>
+        <MudTh>Opis</MudTh>
+        <MudTh>Lokacija</MudTh>
+        <MudTh>Prijavitelj</MudTh>
+        <MudTh>Tip kvara</MudTh>
+        <MudTh>Prioritet</MudTh>
+        <MudTh>Status</MudTh>
+        <MudTh>
+            <MudTableSortLabel T="FaultReportDto" SortLabel="dueDate">
+                Rok
+            </MudTableSortLabel>
+        </MudTh>
+        <MudTh>
+            <MudTableSortLabel T="FaultReportDto" SortLabel="createdAt" InitialDirection="SortDirection.Descending">
+                Kreirano
+            </MudTableSortLabel>
+        </MudTh>
+        <MudTh>Akcije</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Opis">
+            <MudTooltip Text="@context.Description">
+                <span>@Truncate(context.Description)</span>
+            </MudTooltip>
+        </MudTd>
+        <MudTd DataLabel="Lokacija">@context.LocationName</MudTd>
+        <MudTd DataLabel="Prijavitelj">@context.ReporterName</MudTd>
+        <MudTd DataLabel="Tip kvara">@context.FaultTypeName</MudTd>
+        <MudTd DataLabel="Prioritet">
+            <MudChip T="string" Color="@PriorityColor(context.FaultPriorityName)" Size="Size.Small">
+                @context.FaultPriorityName
+            </MudChip>
+        </MudTd>
+        <MudTd DataLabel="Status">
+            <MudChip T="string" Color="@StatusColor(context.FaultStatusName)" Size="Size.Small">
+                @context.FaultStatusName
+            </MudChip>
+        </MudTd>
+        <MudTd DataLabel="Rok">@(context.DueDate?.ToString("dd.MM.yyyy") ?? "-")</MudTd>
+        <MudTd DataLabel="Kreirano">@context.CreatedAt.ToString("dd.MM.yyyy HH:mm")</MudTd>
+        <MudTd DataLabel="Akcije">
+            <span @onclick:stopPropagation="true">
+                <MudTooltip Text="Detalji">
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small"
+                                   OnClick="@(() => NavigationManager.NavigateTo($"/fault-reports/{context.Id}"))" />
+                </MudTooltip>
+                <MudTooltip Text="@(context.FaultStatusName == StatusZaprimljeno ? "Pregled" : "Pregled je moguć samo za status \"Zaprimljeno\"")">
+                    <MudIconButton Icon="@Icons.Material.Filled.FactCheck" Size="Size.Small"
+                                   Disabled="@(context.FaultStatusName != StatusZaprimljeno)"
+                                   OnClick="() => OpenReviewDialogAsync(context)" />
+                </MudTooltip>
+                <MudTooltip Text="Obriši">
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="() => DeleteFaultReportAsync(context)" />
+                </MudTooltip>
+            </span>
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
         <MudAlert Severity="Severity.Info">Nema prijava za zadane filtere.</MudAlert>
-    }
-    else
-    {
-        <MudTable Items="_faultReports" Hover="true" Striped="true" OnRowClick="@((TableRowClickEventArgs<FaultReportDto> args) => NavigationManager.NavigateTo($"/fault-reports/{args.Item.Id}"))" RowStyle="cursor: pointer;">
-            <HeaderContent>
-                <MudTh>Opis</MudTh>
-                <MudTh>Lokacija</MudTh>
-                <MudTh>Prijavitelj</MudTh>
-                <MudTh>Tip kvara</MudTh>
-                <MudTh>Prioritet</MudTh>
-                <MudTh>Status</MudTh>
-                <MudTh>
-                    <MudTableSortLabel T="FaultReportDto" SortBy="@(x => (object)(x.DueDate ?? DateTime.MinValue))"
-                                       SortDirectionChanged="@(dir => OnSortChangedAsync("dueDate", dir))">
-                        Rok
-                    </MudTableSortLabel>
-                </MudTh>
-                <MudTh>
-                    <MudTableSortLabel T="FaultReportDto" SortBy="@(x => (object)x.CreatedAt)"
-                                       InitialDirection="SortDirection.Descending"
-                                       SortDirectionChanged="@(dir => OnSortChangedAsync("createdAt", dir))">
-                        Kreirano
-                    </MudTableSortLabel>
-                </MudTh>
-                <MudTh>Akcije</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd DataLabel="Opis">
-                    <MudTooltip Text="@context.Description">
-                        <span>@Truncate(context.Description)</span>
-                    </MudTooltip>
-                </MudTd>
-                <MudTd DataLabel="Lokacija">@context.LocationName</MudTd>
-                <MudTd DataLabel="Prijavitelj">@context.ReporterName</MudTd>
-                <MudTd DataLabel="Tip kvara">@context.FaultTypeName</MudTd>
-                <MudTd DataLabel="Prioritet">
-                    <MudChip T="string" Color="@PriorityColor(context.FaultPriorityName)" Size="Size.Small">
-                        @context.FaultPriorityName
-                    </MudChip>
-                </MudTd>
-                <MudTd DataLabel="Status">
-                    <MudChip T="string" Color="@StatusColor(context.FaultStatusName)" Size="Size.Small">
-                        @context.FaultStatusName
-                    </MudChip>
-                </MudTd>
-                <MudTd DataLabel="Rok">@(context.DueDate?.ToString("dd.MM.yyyy") ?? "-")</MudTd>
-                <MudTd DataLabel="Kreirano">@context.CreatedAt.ToString("dd.MM.yyyy HH:mm")</MudTd>
-                <MudTd DataLabel="Akcije">
-                    <span @onclick:stopPropagation="true">
-                        <MudTooltip Text="Detalji">
-                            <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small"
-                                           OnClick="@(() => NavigationManager.NavigateTo($"/fault-reports/{context.Id}"))" />
-                        </MudTooltip>
-                        <MudTooltip Text="@(context.FaultStatusName == StatusZaprimljeno ? "Pregled" : "Pregled je moguć samo za status \"Zaprimljeno\"")">
-                            <MudIconButton Icon="@Icons.Material.Filled.FactCheck" Size="Size.Small"
-                                           Disabled="@(context.FaultStatusName != StatusZaprimljeno)"
-                                           OnClick="() => OpenReviewDialogAsync(context)" />
-                        </MudTooltip>
-                        <MudTooltip Text="Obriši">
-                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                                           OnClick="() => DeleteFaultReportAsync(context)" />
-                        </MudTooltip>
-                    </span>
-                </MudTd>
-            </RowTemplate>
-        </MudTable>
-    }
-}
+    </NoRecordsContent>
+    <LoadingContent>
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    </LoadingContent>
+</MudTable>
 
 @code {
     private const string StatusZaprimljeno = "Zaprimljeno";
@@ -154,14 +144,14 @@ else if (_errorMessage is null)
     private const string PrioritySrednji = "Srednji";
     private const string PriorityNizak = "Nizak";
 
-    private List<FaultReportDto> _faultReports = new();
+    private MudTable<FaultReportDto> _table = null!;
     private List<LookupDto> _locations = new();
     private List<LookupDto> _faultStatuses = new();
     private List<LookupDto> _faultPriorities = new();
     private List<LookupDto> _faultTypes = new();
     private List<LookupDto> _reporters = new();
 
-    private bool _isLoading = true;
+    private bool _isLoading;
     private string? _errorMessage;
 
     private string? _search;
@@ -170,13 +160,10 @@ else if (_errorMessage is null)
     private int? _faultPriorityId;
     private DateTime? _dateFrom;
     private DateTime? _dateTo;
-    private string? _sortBy;
-    private bool _sortDescending = true;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadLookupsAsync();
-        await LoadFaultReportsAsync();
     }
 
     private async Task LoadLookupsAsync()
@@ -202,19 +189,21 @@ else if (_errorMessage is null)
         }
     }
 
-    private async Task LoadFaultReportsAsync()
+    private async Task<TableData<FaultReportDto>> ServerReloadAsync(TableState state, CancellationToken cancellationToken)
     {
         _isLoading = true;
         _errorMessage = null;
 
         try
         {
-            var query = BuildQueryString();
-            _faultReports = await Http.GetFromJsonAsync<List<FaultReportDto>>($"api/fault-reports{query}") ?? new();
+            var query = BuildQueryString(state.SortLabel, state.SortDirection == SortDirection.Descending);
+            var items = await Http.GetFromJsonAsync<List<FaultReportDto>>($"api/fault-reports{query}", cancellationToken) ?? new();
+            return new TableData<FaultReportDto> { Items = items, TotalItems = items.Count };
         }
         catch (Exception ex)
         {
             _errorMessage = $"Greška prilikom dohvaćanja prijava: {ex.Message}";
+            return new TableData<FaultReportDto> { Items = new List<FaultReportDto>(), TotalItems = 0 };
         }
         finally
         {
@@ -222,7 +211,7 @@ else if (_errorMessage is null)
         }
     }
 
-    private string BuildQueryString()
+    private string BuildQueryString(string? sortLabel, bool sortDescending)
     {
         var parts = new List<string>();
 
@@ -256,10 +245,10 @@ else if (_errorMessage is null)
             parts.Add($"dateTo={_dateTo.Value:yyyy-MM-dd}");
         }
 
-        if (!string.IsNullOrWhiteSpace(_sortBy))
+        if (!string.IsNullOrWhiteSpace(sortLabel))
         {
-            parts.Add($"sortBy={Uri.EscapeDataString(_sortBy)}");
-            parts.Add($"sortDescending={(_sortDescending ? "true" : "false")}");
+            parts.Add($"sortBy={Uri.EscapeDataString(sortLabel)}");
+            parts.Add($"sortDescending={(sortDescending ? "true" : "false")}");
         }
 
         return parts.Count > 0 ? "?" + string.Join("&", parts) : string.Empty;
@@ -267,7 +256,7 @@ else if (_errorMessage is null)
 
     private async Task ApplyFiltersAsync()
     {
-        await LoadFaultReportsAsync();
+        await _table.ReloadServerData();
     }
 
     private async Task ResetFiltersAsync()
@@ -278,26 +267,8 @@ else if (_errorMessage is null)
         _faultPriorityId = null;
         _dateFrom = null;
         _dateTo = null;
-        _sortBy = null;
-        _sortDescending = true;
 
-        await LoadFaultReportsAsync();
-    }
-
-    private async Task OnSortChangedAsync(string column, SortDirection direction)
-    {
-        if (direction == SortDirection.None)
-        {
-            _sortBy = null;
-            _sortDescending = true;
-        }
-        else
-        {
-            _sortBy = column;
-            _sortDescending = direction == SortDirection.Descending;
-        }
-
-        await LoadFaultReportsAsync();
+        await _table.ReloadServerData();
     }
 
     private async Task OpenCreateDialogAsync()
@@ -314,7 +285,7 @@ else if (_errorMessage is null)
         if (result is { Canceled: false })
         {
             Snackbar.Add("Prijava je spremljena.", Severity.Success);
-            await LoadFaultReportsAsync();
+            await _table.ReloadServerData();
         }
     }
 
@@ -333,7 +304,7 @@ else if (_errorMessage is null)
         if (result is { Canceled: false })
         {
             Snackbar.Add("Prijava je pregledana.", Severity.Success);
-            await LoadFaultReportsAsync();
+            await _table.ReloadServerData();
         }
     }
 
@@ -356,17 +327,17 @@ else if (_errorMessage is null)
             if (response.IsSuccessStatusCode)
             {
                 Snackbar.Add("Prijava je obrisana.", Severity.Success);
-                await LoadFaultReportsAsync();
+                await _table.ReloadServerData();
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
             {
-                var message = await response.Content.ReadFromJsonAsync<string>();
-                Snackbar.Add(message ?? "Prijavu nije moguće obrisati.", Severity.Warning);
+                var message = await response.Content.ReadAsStringAsync();
+                Snackbar.Add(string.IsNullOrWhiteSpace(message) ? "Prijavu nije moguće obrisati." : message, Severity.Warning);
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
                 Snackbar.Add("Prijava više ne postoji.", Severity.Warning);
-                await LoadFaultReportsAsync();
+                await _table.ReloadServerData();
             }
             else
             {

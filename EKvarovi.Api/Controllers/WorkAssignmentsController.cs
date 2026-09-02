@@ -2,13 +2,17 @@ using System.Linq.Expressions;
 using EKvarovi.Api.Data;
 using EKvarovi.Shared.DTOs;
 using EKvarovi.Shared.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace EKvarovi.Api.Controllers;
 
+// Citanje dopusteno i Technicianu (treba znati je li aktivan na nalogu) - stvarna
+// ownership provjera (samo SVOJ nalog) dolazi kasnije uz /mine endpoint.
 [ApiController]
 [Route("api/work-assignments")]
+[Authorize(Roles = "Admin,Manager,Technician")]
 public class WorkAssignmentsController : ControllerBase
 {
     private const string StatusDodijeljeno = "Dodijeljeno";
@@ -97,6 +101,7 @@ public class WorkAssignmentsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<WorkAssignmentDto>> CreateWorkAssignment(CreateWorkAssignmentDto dto)
     {
         var faultReport = await _context.FaultReports.FirstOrDefaultAsync(fr => fr.Id == dto.FaultReportId);
@@ -152,6 +157,7 @@ public class WorkAssignmentsController : ControllerBase
     }
 
     [HttpPost("{faultReportId:int}/reassign")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<WorkAssignmentDto>> ReassignWorkAssignment(int faultReportId, ReassignWorkAssignmentDto dto)
     {
         var currentAssignment = await _context.WorkAssignments

@@ -2,13 +2,17 @@ using System.Linq.Expressions;
 using EKvarovi.Api.Data;
 using EKvarovi.Shared.DTOs;
 using EKvarovi.Shared.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace EKvarovi.Api.Controllers;
 
+// Iste uloge za sve akcije (Technician radi na SVOJOJ intervenciji - ownership
+// provjera dolazi kasnije uz /mine), pa je [Authorize] na razini klase.
 [ApiController]
 [Route("api/interventions")]
+[Authorize(Roles = "Admin,Manager,Technician")]
 public class InterventionsController : ControllerBase
 {
     private const string InterventionStatusUTijeku = "U tijeku";

@@ -1,49 +1,106 @@
-﻿<MudNavMenu>
+@implements IDisposable
+@inject CurrentUserService CurrentUserService
+@inject NavigationManager NavigationManager
+
+<MudNavMenu>
     <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">
         Home
     </MudNavLink>
 
-    <MudNavLink Href="/locations" Icon="@Icons.Material.Filled.LocationOn">
-        Lokacije
+    @if (CurrentUserService.IsAuthenticated)
+    {
+        @* Vidljivost linkova ovdje samo prati [Authorize] pravila vec postavljena na API
+           kontrolerima - ovo je UX pogodnost, stvarna zastita je na API strani. *@
+
+        <MudNavLink Href="/locations" Icon="@Icons.Material.Filled.LocationOn">
+            Lokacije
+        </MudNavLink>
+
+        @if (CurrentUserService.IsInRole("Admin") || CurrentUserService.IsInRole("Manager"))
+        {
+            <MudNavLink Href="/employees" Icon="@Icons.Material.Filled.People">
+                Zaposlenici
+            </MudNavLink>
+
+            <MudNavLink Href="/fault-reports" Icon="@Icons.Material.Filled.ReportProblem">
+                Prijave kvarova
+            </MudNavLink>
+
+            <MudNavLink Href="/assignments" Icon="@Icons.Material.Filled.AssignmentInd">
+                Dodjele
+            </MudNavLink>
+        }
+
+        @if (CurrentUserService.IsInRole("Admin") || CurrentUserService.IsInRole("Manager") || CurrentUserService.IsInRole("Technician"))
+        {
+            <MudNavLink Href="/interventions" Icon="@Icons.Material.Filled.Build">
+                Intervencije
+            </MudNavLink>
+
+            <MudNavLink Href="/materials" Icon="@Icons.Material.Filled.Inventory2">
+                Materijali
+            </MudNavLink>
+        }
+
+        <MudDivider Class="my-2" />
+
+        <MudNavLink Href="/my-reports" Icon="@Icons.Material.Filled.AssignmentTurnedIn">
+            Moje prijave
+        </MudNavLink>
+
+        <MudNavLink Href="/my-assignments" Icon="@Icons.Material.Filled.Engineering">
+            Moji nalozi
+        </MudNavLink>
+
+        @if (CurrentUserService.IsInRole("Admin"))
+        {
+            <MudDivider Class="my-2" />
+
+            <MudNavLink Href="/users" Icon="@Icons.Material.Filled.ManageAccounts">
+                Korisnici
+            </MudNavLink>
+        }
+    }
+</MudNavMenu>
+
+<MudDivider Class="my-2" />
+
+@if (CurrentUserService.IsAuthenticated)
+{
+    <div class="px-4 pt-2 pb-1">
+        <MudText Typo="Typo.body2">@(CurrentUserService.DisplayName ?? CurrentUserService.Email)</MudText>
+        <MudText Typo="Typo.caption" Class="mud-text-secondary">@string.Join(", ", CurrentUserService.Roles)</MudText>
+    </div>
+    <MudNavLink OnClick="LogoutAsync" Icon="@Icons.Material.Filled.Logout">
+        Odjava
     </MudNavLink>
-
-    <MudNavLink Href="/employees" Icon="@Icons.Material.Filled.People">
-        Zaposlenici
-    </MudNavLink>
-
-    <MudNavLink Href="/fault-reports" Icon="@Icons.Material.Filled.ReportProblem">
-        Prijave kvarova
-    </MudNavLink>
-
-    <MudNavLink Href="/assignments" Icon="@Icons.Material.Filled.AssignmentInd">
-        Dodjele
-    </MudNavLink>
-
-    <MudNavLink Href="/interventions" Icon="@Icons.Material.Filled.Build">
-        Intervencije
-    </MudNavLink>
-
-    <MudNavLink Href="/materials" Icon="@Icons.Material.Filled.Inventory2">
-        Materijali
-    </MudNavLink>
-
-    <MudDivider Class="my-2" />
-
-    <MudNavLink Href="/my-reports" Icon="@Icons.Material.Filled.AssignmentTurnedIn">
-        Moje prijave
-    </MudNavLink>
-
-    <MudNavLink Href="/my-assignments" Icon="@Icons.Material.Filled.Engineering">
-        Moji nalozi
-    </MudNavLink>
-
-    <MudDivider Class="my-2" />
-
-    <MudNavLink Href="/users" Icon="@Icons.Material.Filled.ManageAccounts">
-        Korisnici
-    </MudNavLink>
-
+}
+else
+{
     <MudNavLink Href="/login" Icon="@Icons.Material.Filled.Login">
         Prijava
     </MudNavLink>
-</MudNavMenu>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        CurrentUserService.OnChange += HandleUserChanged;
+    }
+
+    private async void HandleUserChanged()
+    {
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LogoutAsync()
+    {
+        await CurrentUserService.LogoutAsync();
+        NavigationManager.NavigateTo("/login");
+    }
+
+    public void Dispose()
+    {
+        CurrentUserService.OnChange -= HandleUserChanged;
+    }
+}

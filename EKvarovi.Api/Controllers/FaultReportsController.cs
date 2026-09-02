@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using EKvarovi.Api.Data;
 using EKvarovi.Shared.DTOs;
 using EKvarovi.Shared.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,6 +10,7 @@ namespace EKvarovi.Api.Controllers;
 
 [ApiController]
 [Route("api/fault-reports")]
+[Authorize]
 public class FaultReportsController : ControllerBase
 {
     private const string StatusZaprimljeno = "Zaprimljeno";
@@ -43,7 +45,10 @@ public class FaultReportsController : ControllerBase
         _context = context;
     }
 
+    // Opci pregled svih prijava (sa svih lokacija) - Reporter/Technician namjerno
+    // iskljuceni, oni koriste /mine endpoint (dolazi u sljedecem koraku).
     [HttpGet]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<List<FaultReportDto>>> GetFaultReports([FromQuery] FaultReportQueryParametersDto parameters)
     {
         IQueryable<FaultReport> query = _context.FaultReports;
@@ -93,6 +98,7 @@ public class FaultReportsController : ControllerBase
     }
 
     [HttpGet("{id:int}")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<FaultReportDto>> GetFaultReport(int id)
     {
         var faultReport = await _context.FaultReports
@@ -109,6 +115,7 @@ public class FaultReportsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin,Manager,Reporter")]
     public async Task<ActionResult<FaultReportDto>> CreateFaultReport(CreateFaultReportDto dto)
     {
         var location = await _context.Locations.FirstOrDefaultAsync(l => l.Id == dto.LocationId);
@@ -154,6 +161,7 @@ public class FaultReportsController : ControllerBase
     }
 
     [HttpPut("{id:int}/review")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> ReviewFaultReport(int id, ReviewFaultReportDto dto)
     {
         var faultReport = await _context.FaultReports
@@ -205,6 +213,7 @@ public class FaultReportsController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteFaultReport(int id)
     {
         var faultReport = await _context.FaultReports.FirstOrDefaultAsync(fr => fr.Id == id);

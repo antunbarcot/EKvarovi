@@ -2,13 +2,17 @@ using System.Linq.Expressions;
 using EKvarovi.Api.Data;
 using EKvarovi.Shared.DTOs;
 using EKvarovi.Shared.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace EKvarovi.Api.Controllers;
 
+// Bilo koja prijavljena uloga smije citati lokacije - Reporter treba popis
+// da odabere svoju lokaciju kod prijave kvara. Izmjene su rezervirane za Admina.
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class LocationsController : ControllerBase
 {
     private readonly EKvaroviDbContext _context;
@@ -59,6 +63,7 @@ public class LocationsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<LocationDto>> CreateLocation(SaveLocationDto dto)
     {
         var locationTypeExists = await _context.LocationTypes.AnyAsync(lt => lt.Id == dto.LocationTypeId);
@@ -88,6 +93,7 @@ public class LocationsController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateLocation(int id, SaveLocationDto dto)
     {
         var location = await _context.Locations.FirstOrDefaultAsync(l => l.Id == id);
@@ -113,6 +119,7 @@ public class LocationsController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteLocation(int id)
     {
         var location = await _context.Locations.FirstOrDefaultAsync(l => l.Id == id);

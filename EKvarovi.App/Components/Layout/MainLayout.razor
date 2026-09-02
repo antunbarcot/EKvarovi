@@ -1,4 +1,7 @@
 ﻿@inherits LayoutComponentBase
+@implements IDisposable
+@inject CurrentUserService CurrentUserService
+@inject NavigationManager NavigationManager
 
 <MudThemeProvider />
 <MudPopoverProvider />
@@ -26,3 +29,53 @@
     <a href="." class="reload">Reload</a>
     <span class="dismiss">🗙</span>
 </div>
+
+@code {
+    // Jedina javna, nezasticena ruta - sve ostalo trazi prijavu. Ovo NE zamjenjuje
+    // [Authorize] na API-ju (to je stvarna sigurnost) - samo sprjecava da neprijavljen
+    // korisnik gleda u praznu/slomljenu stranicu dok ceka da mu API vrati 401 na svaki poziv.
+    private static readonly string[] PublicPaths = { "/login" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CurrentUserService.EnsureInitializedAsync();
+        RedirectIfNotAuthenticated();
+
+        // MainLayout se NE rekonstruira pri navigaciji unutar istog kruga (samo @Body
+        // ostaje isti "prozor") - OnInitializedAsync gore pokriva samo prvo ucitavanje,
+        // pa svaku sljedecu navigaciju (npr. klik na link prije prijave) hvatamo ovdje.
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        await CurrentUserService.EnsureInitializedAsync();
+        RedirectIfNotAuthenticated();
+    }
+
+    private void RedirectIfNotAuthenticated()
+    {
+        // KRITICNO: dok CurrentUserService jos nije uspio procitati sessionStorage
+        // (staticni prerender prije spajanja SignalR kruga, JS interop nedostupan) NE
+        // smijemo redirectati - u tom trenutku bismo AUTOMATSKI redirectali bas SVAKOG
+        // korisnika (i vec prijavljenog!) jer IsAuthenticated defaultno cita kao false dok
+        // se ne dozna stvarno stanje. NavigationManager.NavigateTo pozvan tijekom prerendera
+        // odmah salje HTTP 302 za cijeli response - prava (interaktivna) provjera bi se
+        // tako presjekla prije nego uopce dobije priliku procitati stvarni token.
+        if (!CurrentUserService.IsInitialized)
+        {
+            return;
+        }
+
+        var path = ("/" + NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Split('?')[0]).ToLowerInvariant();
+        if (!CurrentUserService.IsAuthenticated && !PublicPaths.Contains(path))
+        {
+            NavigationManager.NavigateTo("/login");
+        }
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+}

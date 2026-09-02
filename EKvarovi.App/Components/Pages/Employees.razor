@@ -170,8 +170,8 @@ else if (_errorMessage is null)
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
             {
-                var message = await response.Content.ReadFromJsonAsync<string>();
-                Snackbar.Add(message ?? "Zaposlenika nije moguće obrisati - deaktivirajte ga umjesto brisanja.", Severity.Warning);
+                var message = await response.Content.ReadAsStringAsync();
+                Snackbar.Add(string.IsNullOrWhiteSpace(message) ? "Zaposlenika nije moguće obrisati - deaktivirajte ga umjesto brisanja." : message, Severity.Warning);
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {

@@ -2,13 +2,17 @@ using System.Linq.Expressions;
 using EKvarovi.Api.Data;
 using EKvarovi.Shared.DTOs;
 using EKvarovi.Shared.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace EKvarovi.Api.Controllers;
 
+// Popis svih zaposlenika ne treba Reporteru/Technicianu - vide samo svoj kontekst
+// preko drugih endpointa. Izmjene su rezervirane za Admina.
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Roles = "Admin,Manager")]
 public class EmployeesController : ControllerBase
 {
     private readonly EKvaroviDbContext _context;
@@ -63,6 +67,7 @@ public class EmployeesController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<EmployeeDto>> CreateEmployee(SaveEmployeeDto dto)
     {
         var validationError = await ValidateAsync(dto);
@@ -95,6 +100,7 @@ public class EmployeesController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateEmployee(int id, SaveEmployeeDto dto)
     {
         var employee = await _context.Employees.FirstOrDefaultAsync(e => e.Id == id);
@@ -123,6 +129,7 @@ public class EmployeesController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteEmployee(int id)
     {
         var employee = await _context.Employees.FirstOrDefaultAsync(e => e.Id == id);

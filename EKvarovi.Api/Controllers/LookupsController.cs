@@ -1,12 +1,15 @@
 using EKvarovi.Api.Data;
 using EKvarovi.Shared.DTOs;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace EKvarovi.Api.Controllers;
 
+// Dropdown/lookup podaci trebaju svim prijavljenim ulogama.
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class LookupsController : ControllerBase
 {
     private readonly EKvaroviDbContext _context;
@@ -98,6 +101,33 @@ public class LookupsController : ControllerBase
         return Ok(reporters);
     }
 
+    [HttpGet("roles")]
+    public async Task<ActionResult<List<LookupDto>>> GetRoles()
+    {
+        var roles = await _context.AppRoles
+            .OrderBy(r => r.Name)
+            .Select(r => new LookupDto { Id = r.Id, Name = r.Name })
+            .ToListAsync();
+
+        return Ok(roles);
+    }
+
+    // Opcenito SVI aktivni zaposlenici (bez obzira na IsReporter/IsTechnician) - za
+    // povezivanje korisnickog racuna s profilom u Users.razor. Razlicito od vec
+    // postojecih /technicians i /reporters koji su namjenski filtrirani.
+    [HttpGet("employees")]
+    public async Task<ActionResult<List<LookupDto>>> GetAllEmployees()
+    {
+        var employees = await _context.Employees
+            .Where(e => e.IsActive)
+            .OrderBy(e => e.LastName)
+            .ThenBy(e => e.FirstName)
+            .Select(e => new LookupDto { Id = e.Id, Name = e.FirstName + " " + e.LastName })
+            .ToListAsync();
+
+        return Ok(employees);
+    }
+
     [HttpGet("material-units")]
     public async Task<ActionResult<List<LookupDto>>> GetMaterialUnits()
     {
@@ -107,5 +137,27 @@ public class LookupsController : ControllerBase
             .ToListAsync();
 
         return Ok(materialUnits);
+    }
+
+    [HttpGet("intervention-statuses")]
+    public async Task<ActionResult<List<LookupDto>>> GetInterventionStatuses()
+    {
+        var interventionStatuses = await _context.InterventionStatuses
+            .OrderBy(s => s.Id)
+            .Select(s => new LookupDto { Id = s.Id, Name = s.Name })
+            .ToListAsync();
+
+        return Ok(interventionStatuses);
+    }
+
+    [HttpGet("attachment-purposes")]
+    public async Task<ActionResult<List<LookupDto>>> GetAttachmentPurposes()
+    {
+        var attachmentPurposes = await _context.AttachmentPurposes
+            .OrderBy(p => p.Id)
+            .Select(p => new LookupDto { Id = p.Id, Name = p.Name })
+            .ToListAsync();
+
+        return Ok(attachmentPurposes);
     }
 }

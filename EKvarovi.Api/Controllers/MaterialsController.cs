@@ -2,13 +2,17 @@ using System.Linq.Expressions;
 using EKvarovi.Api.Data;
 using EKvarovi.Shared.DTOs;
 using EKvarovi.Shared.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace EKvarovi.Api.Controllers;
 
+// Technician smije citati materijale (bira ih kod evidentiranja intervencije),
+// ali ne smije upravljati sifrarnikom materijala.
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Roles = "Admin,Manager,Technician")]
 public class MaterialsController : ControllerBase
 {
     private readonly EKvaroviDbContext _context;
@@ -56,6 +60,7 @@ public class MaterialsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<MaterialDto>> CreateMaterial(SaveMaterialDto dto)
     {
         var materialUnitExists = await _context.MaterialUnits.AnyAsync(mu => mu.Id == dto.MaterialUnitId);
@@ -83,6 +88,7 @@ public class MaterialsController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> UpdateMaterial(int id, SaveMaterialDto dto)
     {
         var material = await _context.Materials.FirstOrDefaultAsync(m => m.Id == id);
@@ -107,6 +113,7 @@ public class MaterialsController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> DeleteMaterial(int id)
     {
         var material = await _context.Materials.FirstOrDefaultAsync(m => m.Id == id);

@@ -1,5 +1,6 @@
 @page "/fault-reports/{Id:int}"
 @rendermode InteractiveServer
+@using System.Net.Http.Headers
 @using System.Net.Http.Json
 @using EKvarovi.App.Components.Dialogs
 @using EKvarovi.Shared.DTOs
@@ -205,6 +206,103 @@ else
             </MudPaper>
         }
     }
+
+    <MudText Typo="Typo.h5" Class="mb-3">Privitci</MudText>
+
+    <MudPaper Class="pa-3 mb-4" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect T="int?" @bind-Value="_selectedPurposeId" Label="Namjena">
+                    @foreach (var purpose in _attachmentPurposes)
+                    {
+                        <MudSelectItem T="int?" Value="purpose.Id">@PurposeDisplayName(purpose.Name)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            @if (_interventions.Count > 0)
+            {
+                <MudItem xs="12" sm="6" md="3">
+                    <MudSelect T="int?" @bind-Value="_selectedInterventionId" Label="Vezano uz intervenciju (opcionalno)" Clearable="true">
+                        @foreach (var intervention in _interventions.OrderByDescending(i => i.StartedAt))
+                        {
+                            <MudSelectItem T="int?" Value="intervention.Id">
+                                @($"#{intervention.Id} - {intervention.InterventionStatusName}")
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+            }
+            <MudItem xs="12" sm="8" md="4">
+                <InputFile OnChange="OnFileSelected" accept="@AcceptAttribute" />
+                @if (_selectedFile is not null)
+                {
+                    <MudText Typo="Typo.caption">@_selectedFile.Name (@FormatFileSize(_selectedFile.Size))</MudText>
+                }
+            </MudItem>
+            <MudItem xs="12" sm="4" md="2" Class="d-flex align-center">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload"
+                           OnClick="UploadAttachmentAsync" Disabled="_isUploading">
+                    Uploadaj
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_isUploading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="mt-2" />
+        }
+
+        @if (_uploadErrorMessage is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-2">@_uploadErrorMessage</MudAlert>
+        }
+    </MudPaper>
+
+    @if (_isLoadingAttachments)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    }
+    else if (_attachmentsErrorMessage is not null)
+    {
+        <MudAlert Severity="Severity.Error">@_attachmentsErrorMessage</MudAlert>
+    }
+    else if (_attachments.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">Prijava još nema nijedan privitak.</MudAlert>
+    }
+    else
+    {
+        <MudGrid>
+            @foreach (var attachment in _attachments)
+            {
+                <MudItem xs="12" sm="6" md="4" lg="3">
+                    <MudCard>
+                        @if (IsPhotoPurpose(attachment.AttachmentPurposeName))
+                        {
+                            <MudCardMedia Image="@FullUrl(attachment.DownloadUrl)" Height="180" />
+                        }
+                        else
+                        {
+                            <MudCardContent Class="d-flex flex-column align-center">
+                                <MudIcon Icon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Large" Color="Color.Error" />
+                                <MudLink Href="@FullUrl(attachment.DownloadUrl)" Target="_blank">Preuzmi</MudLink>
+                            </MudCardContent>
+                        }
+                        <MudCardContent>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="mb-1">@PurposeDisplayName(attachment.AttachmentPurposeName)</MudChip>
+                            <MudText Typo="Typo.body2">@attachment.OriginalFileName</MudText>
+                            <MudText Typo="Typo.caption">@FormatFileSize(attachment.FileSizeBytes)</MudText>
+                            <MudText Typo="Typo.caption">@attachment.UploadedAt.ToString("dd.MM.yyyy HH:mm")</MudText>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                           OnClick="@(() => DeleteAttachmentAsync(attachment))" />
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
 }
 
 @code {
@@ -217,21 +315,36 @@ else
 
     private const string StatusUTijeku = "U tijeku";
 
+    private const string PurposeFotografijaPrije = "FotografijaPrije";
+    private const string PurposeFotografijaPoslije = "FotografijaPoslije";
+    private const string PurposeDokument = "Dokument";
+    private const long MaxAttachmentSizeBytes = 10 * 1024 * 1024;
+
     private FaultReportDto? _faultReport;
     private List<WorkAssignmentDto> _assignments = new();
     private List<LookupDto> _technicians = new();
     private List<InterventionDto> _interventions = new();
     private List<MaterialDto> _materials = new();
+    private List<AttachmentDto> _attachments = new();
+    private List<LookupDto> _attachmentPurposes = new();
 
     private bool _isLoadingReport = true;
     private bool _isLoadingAssignments = true;
     private bool _isLoadingInterventions = true;
+    private bool _isLoadingAttachments = true;
     private bool _isStartingIntervention;
     private bool _isAddingMaterial;
+    private bool _isUploading;
     private string? _reportErrorMessage;
     private string? _assignmentsErrorMessage;
     private string? _interventionsErrorMessage;
     private string? _materialErrorMessage;
+    private string? _attachmentsErrorMessage;
+    private string? _uploadErrorMessage;
+
+    private IBrowserFile? _selectedFile;
+    private int? _selectedPurposeId;
+    private int? _selectedInterventionId;
 
     private int? _newMaterialId;
     private decimal? _newMaterialQuantity;
@@ -249,6 +362,8 @@ else
         await LoadFaultReportAsync();
         await LoadAssignmentsAsync();
         await LoadInterventionsAsync();
+        await LoadAttachmentPurposesAsync();
+        await LoadAttachmentsAsync();
     }
 
     private async Task LoadTechniciansAsync()
@@ -487,11 +602,196 @@ else
         }
     }
 
+    private async Task LoadAttachmentPurposesAsync()
+    {
+        try
+        {
+            _attachmentPurposes = await Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/attachment-purposes") ?? new();
+        }
+        catch (Exception ex)
+        {
+            _attachmentsErrorMessage = $"Greška prilikom dohvaćanja namjena privitaka: {ex.Message}";
+        }
+    }
+
+    private async Task LoadAttachmentsAsync()
+    {
+        _isLoadingAttachments = true;
+        _attachmentsErrorMessage = null;
+
+        try
+        {
+            _attachments = await Http.GetFromJsonAsync<List<AttachmentDto>>($"api/attachments?faultReportId={Id}") ?? new();
+        }
+        catch (Exception ex)
+        {
+            _attachmentsErrorMessage = $"Greška prilikom dohvaćanja privitaka: {ex.Message}";
+        }
+        finally
+        {
+            _isLoadingAttachments = false;
+        }
+    }
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _selectedFile = e.File;
+        _uploadErrorMessage = null;
+    }
+
+    private async Task UploadAttachmentAsync()
+    {
+        _uploadErrorMessage = null;
+
+        if (_selectedFile is null)
+        {
+            _uploadErrorMessage = "Odaberite datoteku.";
+            return;
+        }
+
+        if (_selectedPurposeId is null)
+        {
+            _uploadErrorMessage = "Odaberite namjenu privitka.";
+            return;
+        }
+
+        _isUploading = true;
+
+        try
+        {
+            await using var stream = _selectedFile.OpenReadStream(MaxAttachmentSizeBytes);
+
+            using var content = new MultipartFormDataContent();
+            using var streamContent = new StreamContent(stream);
+            streamContent.Headers.ContentType = new MediaTypeHeaderValue(_selectedFile.ContentType);
+
+            content.Add(streamContent, "file", _selectedFile.Name);
+            content.Add(new StringContent(Id.ToString()), "faultReportId");
+            content.Add(new StringContent(_selectedPurposeId.Value.ToString()), "attachmentPurposeId");
+
+            if (_selectedInterventionId.HasValue)
+            {
+                content.Add(new StringContent(_selectedInterventionId.Value.ToString()), "interventionId");
+            }
+
+            var response = await Http.PostAsync("api/attachments", content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Privitak je uploadan.", Severity.Success);
+                _selectedFile = null;
+                _selectedPurposeId = null;
+                _selectedInterventionId = null;
+                await LoadAttachmentsAsync();
+            }
+            else if (response.StatusCode is System.Net.HttpStatusCode.BadRequest or System.Net.HttpStatusCode.NotFound)
+            {
+                _uploadErrorMessage = await ReadErrorMessageAsync(response);
+            }
+            else
+            {
+                _uploadErrorMessage = $"Greška prilikom uploada (HTTP {(int)response.StatusCode}).";
+            }
+        }
+        catch (Exception ex)
+        {
+            _uploadErrorMessage = $"Greška prilikom uploada: {ex.Message}";
+        }
+        finally
+        {
+            _isUploading = false;
+        }
+    }
+
+    private async Task DeleteAttachmentAsync(AttachmentDto attachment)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Potvrda brisanja",
+            $"Jeste li sigurni da želite obrisati privitak \"{attachment.OriginalFileName}\"?",
+            yesText: "Obriši", cancelText: "Odustani");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var response = await Http.DeleteAsync($"api/attachments/{attachment.Id}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Privitak je obrisan.", Severity.Success);
+                await LoadAttachmentsAsync();
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                Snackbar.Add("Privitak više ne postoji.", Severity.Warning);
+                await LoadAttachmentsAsync();
+            }
+            else
+            {
+                Snackbar.Add($"Greška prilikom brisanja (HTTP {(int)response.StatusCode}).", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Greška prilikom brisanja: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private string FullUrl(string downloadUrl) => new Uri(Http.BaseAddress!, downloadUrl).ToString();
+
+    private string AcceptAttribute
+    {
+        get
+        {
+            var purposeName = _attachmentPurposes.FirstOrDefault(p => p.Id == _selectedPurposeId)?.Name;
+            return purposeName switch
+            {
+                PurposeFotografijaPrije or PurposeFotografijaPoslije => "image/*",
+                PurposeDokument => "application/pdf",
+                _ => string.Empty
+            };
+        }
+    }
+
+    private static bool IsPhotoPurpose(string? purposeName) =>
+        purposeName is PurposeFotografijaPrije or PurposeFotografijaPoslije;
+
+    private static string PurposeDisplayName(string? purposeName) => purposeName switch
+    {
+        PurposeFotografijaPrije => "Fotografija prije",
+        PurposeFotografijaPoslije => "Fotografija poslije",
+        PurposeDokument => "Dokument",
+        _ => purposeName ?? string.Empty
+    };
+
+    private static string FormatFileSize(long bytes)
+    {
+        const long kb = 1024;
+        const long mb = kb * 1024;
+
+        if (bytes >= mb)
+        {
+            return $"{bytes / (double)mb:0.#} MB";
+        }
+
+        if (bytes >= kb)
+        {
+            return $"{bytes / (double)kb:0.#} KB";
+        }
+
+        return $"{bytes} B";
+    }
+
     private static async Task<string> ReadErrorMessageAsync(HttpResponseMessage response)
     {
         try
         {
-            var message = await response.Content.ReadFromJsonAsync<string>();
+            // BadRequest(string) na API strani vraca "text/plain" tijelo (ne JSON),
+            // pa ReadFromJsonAsync<string> baca iznimku i uvijek pada na generičku poruku.
+            var message = await response.Content.ReadAsStringAsync();
             return string.IsNullOrWhiteSpace(message)
                 ? $"Greška (HTTP {(int)response.StatusCode})."
                 : message;

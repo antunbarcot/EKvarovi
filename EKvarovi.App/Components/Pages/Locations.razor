@@ -159,8 +159,8 @@ else if (_errorMessage is null)
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
             {
-                var message = await response.Content.ReadFromJsonAsync<string>();
-                Snackbar.Add(message ?? "Lokaciju nije moguće obrisati - deaktivirajte je umjesto brisanja.", Severity.Warning);
+                var message = await response.Content.ReadAsStringAsync();
+                Snackbar.Add(string.IsNullOrWhiteSpace(message) ? "Lokaciju nije moguće obrisati - deaktivirajte je umjesto brisanja." : message, Severity.Warning);
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {

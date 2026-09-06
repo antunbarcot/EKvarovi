@@ -16,13 +16,17 @@ public class FaultReportsController : ControllerBase
 {
     private const string StatusZaprimljeno = "Zaprimljeno";
     private const string StatusPregledano = "Pregledano";
+    private const string StatusRijeseno = "Riješeno";
+    private const string StatusZatvoreno = "Zatvoreno";
     private const string PriorityKritican = "Kritičan";
+    private const string InterventionStatusZavrsena = "Završena";
 
     private readonly EKvaroviDbContext _context;
 
     // Expression (ne obicna metoda) - EF Core je mora prevesti u SQL projekciju,
     // pa se ne moze pozvati obicna C# metoda unutar .Select() nad IQueryable.
-    private static readonly Expression<Func<FaultReport, FaultReportDto>> ToDtoProjection = fr => new FaultReportDto
+    // Internal (ne private) - ponovno je koristi DashboardController za "zadnjih 5 prijava".
+    internal static readonly Expression<Func<FaultReport, FaultReportDto>> ToDtoProjection = fr => new FaultReportDto
     {
         Id = fr.Id,
         Description = fr.Description,
@@ -234,14 +238,69 @@ public class FaultReportsController : ControllerBase
         return NoContent();
     }
 
+    // Zavrsni korak toka: Upravitelj zatvara prijavu tek NAKON provjere da je uspjesno
+    // rijesena. Obje provjere ispod (status Rijeseno + postojanje zavrsene intervencije)
+    // su, uz ispravan tok kroz UI, redundantne jedna drugoj - ali API ne smije
+    // pretpostaviti da je stanje uvijek doslo kroz ocekivani put, pa provjerava oboje eksplicitno.
+    [HttpPut("{id:int}/close")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<IActionResult> CloseFaultReport(int id)
+    {
+        var faultReport = await _context.FaultReports
+            .Include(fr => fr.FaultStatus)
+            .FirstOrDefaultAsync(fr => fr.Id == id);
+
+        if (faultReport is null)
+        {
+            return NotFound();
+        }
+
+        if (faultReport.FaultStatus?.Name != StatusRijeseno)
+        {
+            return BadRequest("Prijava mora biti u statusu Riješeno prije zatvaranja.");
+        }
+
+        var hasSuccessfulIntervention = await _context.Interventions
+            .AnyAsync(i => i.WorkAssignment!.FaultReportId == id && i.InterventionStatus!.Name == InterventionStatusZavrsena);
+
+        if (!hasSuccessfulIntervention)
+        {
+            return BadRequest("Prijava se ne može zatvoriti bez uspješno završene intervencije.");
+        }
+
+        var zatvorenoStatus = await _context.FaultStatuses.FirstOrDefaultAsync(s => s.Name == StatusZatvoreno);
+        if (zatvorenoStatus is null)
+        {
+            return BadRequest($"Status \"{StatusZatvoreno}\" nije pronađen u šifrarniku statusa.");
+        }
+
+        faultReport.FaultStatusId = zatvorenoStatus.Id;
+        faultReport.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
     [HttpDelete("{id:int}")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteFaultReport(int id)
     {
-        var faultReport = await _context.FaultReports.FirstOrDefaultAsync(fr => fr.Id == id);
+        var faultReport = await _context.FaultReports
+            .Include(fr => fr.FaultStatus)
+            .FirstOrDefaultAsync(fr => fr.Id == id);
+
         if (faultReport is null)
         {
             return NotFound();
+        }
+
+        // Eksplicitna zastita, neovisna o provjeri dodjela ispod: zatvorena prijava se
+        // NIKAD ne smije obrisati, bez obzira kakvo joj je stanje WorkAssignments (iako bi
+        // zatvorena prijava gotovo sigurno vec imala dodjele i tako bila blokirana i ispod).
+        if (faultReport.FaultStatus?.Name == StatusZatvoreno)
+        {
+            return BadRequest("Zatvorene prijave se ne mogu brisati.");
         }
 
         var hasWorkAssignments = await _context.WorkAssignments.AnyAsync(wa => wa.FaultReportId == id);

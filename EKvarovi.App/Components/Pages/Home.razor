@@ -1,7 +1,219 @@
-﻿@page "/"
+@page "/"
+@rendermode InteractiveServer
+@using System.Net.Http.Json
+@using EKvarovi.Shared.DTOs
+@inject HttpClient Http
+@inject CurrentUserService CurrentUserService
+@inject NavigationManager NavigationManager
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Početna</PageTitle>
 
-<h1>Hello, world!</h1>
+@if (!_isInitialized)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+}
+else if (!CurrentUserService.IsAuthenticated)
+{
+    <MudPaper Class="pa-8" Elevation="0">
+        <MudText Typo="Typo.h3" Class="mb-4">e-Kvarovi Županije</MudText>
+        <MudText Typo="Typo.body1" Class="mb-6">
+            Aplikacija za prijavu i obradu kvarova u županijskim zgradama i lokacijama.
+            Prijavite kvar, pratite tijek njegove obrade i pregledajte povijest intervencija.
+        </MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
+                   StartIcon="@Icons.Material.Filled.Login" Href="/login">
+            Prijava
+        </MudButton>
+    </MudPaper>
+}
+else if (_isLoading)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+}
+else if (_errorMessage is not null)
+{
+    <MudAlert Severity="Severity.Error">@_errorMessage</MudAlert>
+}
+else if (_isFullDashboard)
+{
+    <MudText Typo="Typo.h4" Class="mb-4">Nadzorna ploča</MudText>
 
-Welcome to your new app.
+    <MudGrid Class="mb-4">
+        @foreach (var tile in BuildDashboardTiles(_dashboard!))
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudPaper Class="pa-4 d-flex align-center gap-4" Elevation="2">
+                    <MudAvatar Color="@tile.Color" Variant="Variant.Filled">
+                        <MudIcon Icon="@tile.Icon" />
+                    </MudAvatar>
+                    <div>
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary">@tile.Label</MudText>
+                        <MudText Typo="Typo.h5" Color="@tile.Color">@tile.Value</MudText>
+                    </div>
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+
+    <MudText Typo="Typo.h5" Class="mb-2">Zadnjih 5 prijava</MudText>
+    @if (_dashboard.RecentFaultReports.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">Još nema prijavljenih kvarova.</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="_dashboard.RecentFaultReports" Hover="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Opis</MudTh>
+                <MudTh>Lokacija</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Prioritet</MudTh>
+                <MudTh>Kreirano</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Opis">
+                    <MudTooltip Text="@context.Description">
+                        <span>@Truncate(context.Description)</span>
+                    </MudTooltip>
+                </MudTd>
+                <MudTd DataLabel="Lokacija">@context.LocationName</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Color="@StatusColor(context.FaultStatusName)" Size="Size.Small">
+                        @context.FaultStatusName
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Prioritet">
+                    @(string.IsNullOrWhiteSpace(context.FaultPriorityName) ? "Nije određeno" : context.FaultPriorityName)
+                </MudTd>
+                <MudTd DataLabel="Kreirano">@context.CreatedAt.ToString("dd.MM.yyyy HH:mm")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+}
+else
+{
+    <MudText Typo="Typo.h4" Class="mb-4">Dobrodošli, @(CurrentUserService.DisplayName ?? CurrentUserService.Email)</MudText>
+
+    @if (CurrentUserService.IsInRole("Reporter"))
+    {
+        <MudPaper Class="pa-4 d-flex align-center gap-4" Elevation="2" MaxWidth="320px">
+            <MudAvatar Color="Color.Info" Variant="Variant.Filled">
+                <MudIcon Icon="@Icons.Material.Filled.AssignmentTurnedIn" />
+            </MudAvatar>
+            <div>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">Moje otvorene prijave</MudText>
+                <MudText Typo="Typo.h5" Color="Color.Info">@(_personal?.MyOpenReportsCount ?? 0)</MudText>
+                <MudButton Variant="Variant.Text" Color="Color.Primary" Class="mt-1 pa-0" Href="/my-reports">
+                    Pregledaj moje prijave
+                </MudButton>
+            </div>
+        </MudPaper>
+    }
+    else if (CurrentUserService.IsInRole("Technician"))
+    {
+        <MudPaper Class="pa-4 d-flex align-center gap-4" Elevation="2" MaxWidth="320px">
+            <MudAvatar Color="Color.Info" Variant="Variant.Filled">
+                <MudIcon Icon="@Icons.Material.Filled.Engineering" />
+            </MudAvatar>
+            <div>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">Moji aktivni nalozi</MudText>
+                <MudText Typo="Typo.h5" Color="Color.Info">@(_personal?.MyActiveAssignmentsCount ?? 0)</MudText>
+                <MudButton Variant="Variant.Text" Color="Color.Primary" Class="mt-1 pa-0" Href="/my-assignments">
+                    Pregledaj moje naloge
+                </MudButton>
+            </div>
+        </MudPaper>
+    }
+}
+
+@code {
+    private bool _isInitialized;
+    private bool _isLoading = true;
+    private bool _isFullDashboard;
+    private string? _errorMessage;
+    private DashboardDto? _dashboard;
+    private PersonalDashboardDto? _personal;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CurrentUserService.EnsureInitializedAsync();
+        _isInitialized = true;
+
+        if (!CurrentUserService.IsAuthenticated)
+        {
+            _isLoading = false;
+            return;
+        }
+
+        _isFullDashboard = CurrentUserService.IsInRole("Admin") || CurrentUserService.IsInRole("Manager");
+
+        try
+        {
+            if (_isFullDashboard)
+            {
+                _dashboard = await Http.GetFromJsonAsync<DashboardDto>("api/dashboard");
+            }
+            else
+            {
+                _personal = await Http.GetFromJsonAsync<PersonalDashboardDto>("api/dashboard/personal");
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Greška prilikom dohvaćanja nadzorne ploče: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static string FormatHours(double? hours)
+    {
+        if (hours is null)
+        {
+            return "Nema podataka";
+        }
+
+        return hours.Value.ToString("0.0") + "h";
+    }
+
+    private sealed record StatTile(string Label, string Value, string Icon, Color Color);
+
+    // Boja/ikona nosi ozbiljnost stanja (status boje), ne identitet metrike - "problem"
+    // kartice (kriticne/zakasnjele/bez izvrsitelja) su crvene/narancaste dok je brojac > 0,
+    // a kad padnu na 0 to je dobra vijest pa prelaze u zeleno. Cisto informativne metrike
+    // (otvorene prijave, aktivne intervencije, prosjek) ostaju neutralne (Info) jer same po
+    // sebi ne signaliziraju problem.
+    private static List<StatTile> BuildDashboardTiles(DashboardDto d) => new()
+    {
+        new("Otvorene prijave", d.OpenFaultReportsCount.ToString(), Icons.Material.Filled.Inbox, Color.Info),
+        new("Kritične prijave", d.CriticalFaultReportsCount.ToString(),
+            d.CriticalFaultReportsCount > 0 ? Icons.Material.Filled.PriorityHigh : Icons.Material.Filled.CheckCircle,
+            d.CriticalFaultReportsCount > 0 ? Color.Error : Color.Success),
+        new("Zakašnjele prijave", d.OverdueFaultReportsCount.ToString(),
+            d.OverdueFaultReportsCount > 0 ? Icons.Material.Filled.EventBusy : Icons.Material.Filled.CheckCircle,
+            d.OverdueFaultReportsCount > 0 ? Color.Error : Color.Success),
+        new("Bez izvršitelja", d.UnassignedFaultReportsCount.ToString(),
+            d.UnassignedFaultReportsCount > 0 ? Icons.Material.Filled.PersonOff : Icons.Material.Filled.CheckCircle,
+            d.UnassignedFaultReportsCount > 0 ? Color.Warning : Color.Success),
+        new("Aktivne intervencije", d.ActiveInterventionsCount.ToString(), Icons.Material.Filled.Build, Color.Info),
+        new("Prosječno vrijeme rješavanja", FormatHours(d.AverageResolutionTimeHours), Icons.Material.Filled.Timer, Color.Info)
+    };
+
+    private static string Truncate(string text, int maxLength = 60)
+    {
+        return text.Length > maxLength ? text[..maxLength] + "…" : text;
+    }
+
+    private static Color StatusColor(string statusName) => statusName switch
+    {
+        "Zaprimljeno" => Color.Default,
+        "Pregledano" => Color.Info,
+        "Dodijeljeno" => Color.Info,
+        "U radu" => Color.Warning,
+        "Riješeno" => Color.Success,
+        "Zatvoreno" => Color.Dark,
+        _ => Color.Default
+    };
+}

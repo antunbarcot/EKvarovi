@@ -8,6 +8,7 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager NavigationManager
+@inject CurrentUserService CurrentUserService
 
 <PageTitle>Prijava #@Id</PageTitle>
 
@@ -63,6 +64,19 @@ else
                 <MudText Typo="Typo.body2"><strong>Kreirano:</strong> @_faultReport.CreatedAt.ToString("dd.MM.yyyy HH:mm")</MudText>
             </MudItem>
         </MudGrid>
+
+        @if (_faultReport.FaultStatusName == StatusRijeseno && (CurrentUserService.IsInRole("Admin") || CurrentUserService.IsInRole("Manager")))
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Dark" StartIcon="@Icons.Material.Filled.TaskAlt"
+                       OnClick="CloseFaultReportAsync" Disabled="_isClosing" Class="mt-4">
+                Zatvori prijavu
+            </MudButton>
+        }
+
+        @if (_closeErrorMessage is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_closeErrorMessage</MudAlert>
+        }
     </MudPaper>
 
     <MudText Typo="Typo.h5" Class="mb-3">Dodjele</MudText>
@@ -314,6 +328,7 @@ else
     private const string PriorityNizak = "Nizak";
 
     private const string StatusUTijeku = "U tijeku";
+    private const string StatusRijeseno = "Riješeno";
 
     private const string PurposeFotografijaPrije = "FotografijaPrije";
     private const string PurposeFotografijaPoslije = "FotografijaPoslije";
@@ -335,6 +350,8 @@ else
     private bool _isStartingIntervention;
     private bool _isAddingMaterial;
     private bool _isUploading;
+    private bool _isClosing;
+    private string? _closeErrorMessage;
     private string? _reportErrorMessage;
     private string? _assignmentsErrorMessage;
     private string? _interventionsErrorMessage;
@@ -599,6 +616,49 @@ else
             Snackbar.Add("Intervencija je završena.", Severity.Success);
             await LoadFaultReportAsync();
             await LoadInterventionsAsync();
+        }
+    }
+
+    private async Task CloseFaultReportAsync()
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Zatvaranje prijave",
+            "Jeste li sigurni da želite zatvoriti ovu prijavu? Ova akcija označava kraj obrade kvara.",
+            yesText: "Zatvori", cancelText: "Odustani");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        _isClosing = true;
+        _closeErrorMessage = null;
+
+        try
+        {
+            var response = await Http.PutAsync($"api/fault-reports/{Id}/close", null);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Prijava je zatvorena.", Severity.Success);
+                await LoadFaultReportAsync();
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+            {
+                _closeErrorMessage = await ReadErrorMessageAsync(response);
+            }
+            else
+            {
+                _closeErrorMessage = $"Greška prilikom zatvaranja prijave (HTTP {(int)response.StatusCode}).";
+            }
+        }
+        catch (Exception ex)
+        {
+            _closeErrorMessage = $"Greška prilikom zatvaranja prijave: {ex.Message}";
+        }
+        finally
+        {
+            _isClosing = false;
         }
     }
 

@@ -4,6 +4,7 @@
 @using EKvarovi.Shared.DTOs
 @inject HttpClient Http
 @inject CurrentUserService CurrentUserService
+@inject NavigationManager NavigationManager
 
 <PageTitle>Moji nalozi</PageTitle>
 
@@ -35,9 +36,6 @@ else
             <MudItem xs="12" sm="6" md="4">
                 <MudCard Elevation="2">
                     <MudCardContent>
-                        @* Technician nema pristup GET api/fault-reports/{id} (samo Admin/Manager),
-                           pa ovdje namjerno prikazujemo detalje izravno (bez klikabilnog linka na
-                           /fault-reports/{id} koji bi za njega zavrsio 403-om). *@
                         <MudText Typo="Typo.subtitle1">@view.Assignment.FaultReportDescription</MudText>
                         <MudText Typo="Typo.body2" Class="mud-text-secondary">@view.Assignment.LocationName</MudText>
 
@@ -49,6 +47,12 @@ else
                             @(view.CurrentInterventionStatus ?? "Nema pokrenute")
                         </MudChip>
                     </MudCardContent>
+                    <MudCardActions>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                                   OnClick="@(() => NavigationManager.NavigateTo($"/fault-reports/{view.Assignment.FaultReportId}"))">
+                            Otvori nalog
+                        </MudButton>
+                    </MudCardActions>
                 </MudCard>
             </MudItem>
         }

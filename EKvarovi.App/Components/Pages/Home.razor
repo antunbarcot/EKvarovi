@@ -89,6 +89,111 @@ else if (_isFullDashboard)
             </RowTemplate>
         </MudTable>
     }
+
+    <MudText Typo="Typo.h4" Class="mb-4 mt-6">SLA pokazatelji</MudText>
+
+    @if (_isLoadingSla)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    }
+    else if (_slaErrorMessage is not null)
+    {
+        <MudAlert Severity="Severity.Error">@_slaErrorMessage</MudAlert>
+    }
+    else if (_sla is null || (_sla.OnTimeResolutionPercentage is null && _sla.LocationBreakdown.Count == 0 && _sla.FaultTypeBreakdown.Count == 0))
+    {
+        <MudAlert Severity="Severity.Info">Nema dovoljno podataka za SLA izvještaj.</MudAlert>
+    }
+    else
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">Postotak prijava riješenih na vrijeme</MudText>
+            @if (_sla.OnTimeResolutionPercentage is null)
+            {
+                <MudText Typo="Typo.h5" Class="mt-1">Nema podataka</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.h3" Color="@SlaColor(_sla.OnTimeResolutionPercentage)" Class="mt-1">
+                    @_sla.OnTimeResolutionPercentage.Value.ToString("0.0")%
+                </MudText>
+                <MudProgressLinear Color="@SlaColor(_sla.OnTimeResolutionPercentage)" Value="@_sla.OnTimeResolutionPercentage.Value"
+                                    Class="mt-2" Rounded="true" Size="Size.Large" />
+            }
+        </MudPaper>
+
+        @if (_sla.LocationBreakdown.Count > 0)
+        {
+            <MudText Typo="Typo.h5" Class="mb-2">Po lokaciji</MudText>
+            <MudTable Items="_sla.LocationBreakdown" Hover="true" Striped="true" Class="mb-4">
+                <HeaderContent>
+                    <MudTh>Lokacija</MudTh>
+                    <MudTh>Broj prijava</MudTh>
+                    <MudTh>Prosječno vrijeme</MudTh>
+                    <MudTh>Na vrijeme</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Lokacija">@context.LocationName</MudTd>
+                    <MudTd DataLabel="Broj prijava">@context.TotalReports</MudTd>
+                    <MudTd DataLabel="Prosječno vrijeme">@FormatHours(context.AverageResolutionHours)</MudTd>
+                    <MudTd DataLabel="Na vrijeme">
+                        @if (context.OnTimePercentage is null)
+                        {
+                            <MudText Typo="Typo.body2">Nema podataka</MudText>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="@SlaColor(context.OnTimePercentage)">
+                                @context.OnTimePercentage.Value.ToString("0.0")%
+                            </MudChip>
+                        }
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            @if (_locationChartSeries.Count > 0)
+            {
+                <MudChart T="double" ChartType="ChartType.Bar" ChartSeries="_locationChartSeries" ChartLabels="_locationChartLabels"
+                          Width="100%" Height="300px" Class="mb-4" />
+            }
+        }
+
+        @if (_sla.FaultTypeBreakdown.Count > 0)
+        {
+            <MudText Typo="Typo.h5" Class="mb-2">Po tipu kvara</MudText>
+            <MudTable Items="_sla.FaultTypeBreakdown" Hover="true" Striped="true" Class="mb-4">
+                <HeaderContent>
+                    <MudTh>Tip kvara</MudTh>
+                    <MudTh>Broj prijava</MudTh>
+                    <MudTh>Prosječno vrijeme</MudTh>
+                    <MudTh>Na vrijeme</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Tip kvara">@context.FaultTypeName</MudTd>
+                    <MudTd DataLabel="Broj prijava">@context.TotalReports</MudTd>
+                    <MudTd DataLabel="Prosječno vrijeme">@FormatHours(context.AverageResolutionHours)</MudTd>
+                    <MudTd DataLabel="Na vrijeme">
+                        @if (context.OnTimePercentage is null)
+                        {
+                            <MudText Typo="Typo.body2">Nema podataka</MudText>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="@SlaColor(context.OnTimePercentage)">
+                                @context.OnTimePercentage.Value.ToString("0.0")%
+                            </MudChip>
+                        }
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            @if (_faultTypeChartSeries.Count > 0)
+            {
+                <MudChart T="double" ChartType="ChartType.Bar" ChartSeries="_faultTypeChartSeries" ChartLabels="_faultTypeChartLabels"
+                          Width="100%" Height="300px" />
+            }
+        }
+    }
 }
 else
 {
@@ -134,6 +239,14 @@ else
     private DashboardDto? _dashboard;
     private PersonalDashboardDto? _personal;
 
+    private bool _isLoadingSla = true;
+    private string? _slaErrorMessage;
+    private SlaMetricsDto? _sla;
+    private List<ChartSeries<double>> _locationChartSeries = new();
+    private string[] _locationChartLabels = Array.Empty<string>();
+    private List<ChartSeries<double>> _faultTypeChartSeries = new();
+    private string[] _faultTypeChartLabels = Array.Empty<string>();
+
     protected override async Task OnInitializedAsync()
     {
         await CurrentUserService.EnsureInitializedAsync();
@@ -142,6 +255,7 @@ else
         if (!CurrentUserService.IsAuthenticated)
         {
             _isLoading = false;
+            _isLoadingSla = false;
             return;
         }
 
@@ -166,7 +280,49 @@ else
         {
             _isLoading = false;
         }
+
+        if (!_isFullDashboard)
+        {
+            _isLoadingSla = false;
+            return;
+        }
+
+        try
+        {
+            _sla = await Http.GetFromJsonAsync<SlaMetricsDto>("api/dashboard/sla");
+
+            if (_sla is not null)
+            {
+                _locationChartLabels = _sla.LocationBreakdown.Select(l => l.LocationName).ToArray();
+                _locationChartSeries = new List<ChartSeries<double>>
+                {
+                    new() { Name = "Prosječno vrijeme (h)", Data = _sla.LocationBreakdown.Select(l => l.AverageResolutionHours ?? 0).ToArray() }
+                };
+
+                _faultTypeChartLabels = _sla.FaultTypeBreakdown.Select(ft => ft.FaultTypeName).ToArray();
+                _faultTypeChartSeries = new List<ChartSeries<double>>
+                {
+                    new() { Name = "Prosječno vrijeme (h)", Data = _sla.FaultTypeBreakdown.Select(ft => ft.AverageResolutionHours ?? 0).ToArray() }
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            _slaErrorMessage = $"Greška prilikom dohvaćanja SLA izvještaja: {ex.Message}";
+        }
+        finally
+        {
+            _isLoadingSla = false;
+        }
     }
+
+    private static Color SlaColor(double? percentage) => percentage switch
+    {
+        null => Color.Default,
+        >= 80 => Color.Success,
+        >= 50 => Color.Warning,
+        _ => Color.Error
+    };
 
     private static string FormatHours(double? hours)
     {

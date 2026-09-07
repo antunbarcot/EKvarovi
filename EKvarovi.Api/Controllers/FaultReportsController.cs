@@ -123,8 +123,13 @@ public class FaultReportsController : ControllerBase
         return Ok(faultReports);
     }
 
+    // Technician smije procitati detalje POJEDINE prijave (treba ih za ekran naloga -
+    // pokretanje/zavrsavanje intervencije, materijal, fotografije) - isti obrazac kao kod
+    // WorkAssignmentsController/InterventionsController: citanje je siroko dopusteno,
+    // ownership (samo VLASTITI aktivni nalog) provjerava se kod write akcija (WorkAssignments/
+    // Interventions kontroleri), ne ovdje.
     [HttpGet("{id:int}")]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "Admin,Manager,Technician")]
     public async Task<ActionResult<FaultReportDto>> GetFaultReport(int id)
     {
         var faultReport = await _context.FaultReports

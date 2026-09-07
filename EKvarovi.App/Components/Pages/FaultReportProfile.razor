@@ -81,7 +81,7 @@ else
 
     <MudText Typo="Typo.h5" Class="mb-3">Dodjele</MudText>
 
-    @if (!_isLoadingAssignments)
+    @if (!_isLoadingAssignments && (CurrentUserService.IsInRole("Admin") || CurrentUserService.IsInRole("Manager")))
     {
         if (!_hasActiveAssignment)
         {
@@ -142,7 +142,7 @@ else
     @if (!_isLoadingInterventions && _activeAssignment is not null && _ongoingIntervention is null)
     {
         <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow"
-                   OnClick="StartInterventionAsync" Disabled="_isStartingIntervention" Class="mb-4">
+                   OnClick="StartInterventionAsync" Disabled="_isStartingIntervention" Class="mb-4" Size="Size.Large">
             Pokreni intervenciju
         </MudButton>
     }
@@ -202,7 +202,7 @@ else
                         </MudSelect>
                         <MudNumericField T="decimal?" @bind-Value="_newMaterialQuantity" Label="Količina" Min="0.01m" Style="max-width: 140px;" />
                         <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-                                   OnClick="@(() => AddMaterialAsync(intervention.Id))" Disabled="_isAddingMaterial">
+                                   OnClick="@(() => AddMaterialAsync(intervention.Id))" Disabled="_isAddingMaterial" Size="Size.Large">
                             Dodaj materijal
                         </MudButton>
                     </MudStack>
@@ -213,7 +213,7 @@ else
                     }
 
                     <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Done"
-                               OnClick="@(() => OpenCompleteDialogAsync(intervention.Id))">
+                               OnClick="@(() => OpenCompleteDialogAsync(intervention.Id))" Size="Size.Large">
                         Završi intervenciju
                     </MudButton>
                 }
@@ -255,7 +255,7 @@ else
             </MudItem>
             <MudItem xs="12" sm="4" md="2" Class="d-flex align-center">
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload"
-                           OnClick="UploadAttachmentAsync" Disabled="_isUploading">
+                           OnClick="UploadAttachmentAsync" Disabled="_isUploading" Size="Size.Large" FullWidth="true">
                     Uploadaj
                 </MudButton>
             </MudItem>
@@ -271,6 +271,42 @@ else
             <MudAlert Severity="Severity.Error" Class="mt-2">@_uploadErrorMessage</MudAlert>
         }
     </MudPaper>
+
+    @if (!_isLoadingAttachments && _attachmentsErrorMessage is null)
+    {
+        <MudText Typo="Typo.h6" Class="mb-2">Usporedba prije/poslije</MudText>
+
+        @if (_beforePhotos.Count == 0 || _afterPhotoGroups.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-4">Nedostaje fotografija za usporedbu.</MudAlert>
+        }
+        else
+        {
+            @foreach (var group in _afterPhotoGroups)
+            {
+                <MudPaper Outlined="true" Class="pa-3 mb-4">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">@InterventionComparisonLabel(group.Key)</MudText>
+                    <MudDivider Class="mb-3" />
+                    <MudGrid>
+                        <MudItem xs="12" md="6">
+                            <MudText Typo="Typo.body2" Class="mb-2"><strong>Prije popravka</strong></MudText>
+                            @foreach (var photo in _beforePhotos)
+                            {
+                                <MudImage Src="@FullUrl(photo.DownloadUrl)" Height="300" Class="rounded-lg mb-2" Style="width:100%; object-fit:cover;" />
+                            }
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudText Typo="Typo.body2" Class="mb-2"><strong>Nakon popravka</strong></MudText>
+                            @foreach (var photo in group)
+                            {
+                                <MudImage Src="@FullUrl(photo.DownloadUrl)" Height="300" Class="rounded-lg mb-2" Style="width:100%; object-fit:cover;" />
+                            }
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            }
+        }
+    }
 
     @if (_isLoadingAttachments)
     {
@@ -308,10 +344,13 @@ else
                             <MudText Typo="Typo.caption">@FormatFileSize(attachment.FileSizeBytes)</MudText>
                             <MudText Typo="Typo.caption">@attachment.UploadedAt.ToString("dd.MM.yyyy HH:mm")</MudText>
                         </MudCardContent>
-                        <MudCardActions>
-                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
-                                           OnClick="@(() => DeleteAttachmentAsync(attachment))" />
-                        </MudCardActions>
+                        @if (CurrentUserService.IsInRole("Admin") || CurrentUserService.IsInRole("Manager"))
+                        {
+                            <MudCardActions>
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                               OnClick="@(() => DeleteAttachmentAsync(attachment))" />
+                            </MudCardActions>
+                        }
                     </MudCard>
                 </MudItem>
             }
@@ -607,8 +646,9 @@ else
         {
             { x => x.InterventionId, interventionId }
         };
+        var options = new DialogOptions { FullWidth = true, MaxWidth = MaxWidth.Small, CloseOnEscapeKey = true };
 
-        var dialog = await DialogService.ShowAsync<CompleteInterventionDialog>("Završi intervenciju", parameters);
+        var dialog = await DialogService.ShowAsync<CompleteInterventionDialog>("Završi intervenciju", parameters, options);
         var result = await dialog.Result;
 
         if (result is { Canceled: false })
@@ -818,6 +858,29 @@ else
 
     private static bool IsPhotoPurpose(string? purposeName) =>
         purposeName is PurposeFotografijaPrije or PurposeFotografijaPoslije;
+
+    private List<AttachmentDto> _beforePhotos =>
+        _attachments.Where(a => a.AttachmentPurposeName == PurposeFotografijaPrije).ToList();
+
+    private List<IGrouping<int?, AttachmentDto>> _afterPhotoGroups =>
+        _attachments
+            .Where(a => a.AttachmentPurposeName == PurposeFotografijaPoslije)
+            .GroupBy(a => a.InterventionId)
+            .OrderBy(g => g.Key)
+            .ToList();
+
+    private string InterventionComparisonLabel(int? interventionId)
+    {
+        if (!interventionId.HasValue)
+        {
+            return "Intervencija";
+        }
+
+        var intervention = _interventions.FirstOrDefault(i => i.Id == interventionId.Value);
+        return intervention is not null
+            ? $"Intervencija #{intervention.Id} - {intervention.TechnicianName} ({intervention.InterventionStatusName})"
+            : $"Intervencija #{interventionId}";
+    }
 
     private static string PurposeDisplayName(string? purposeName) => purposeName switch
     {

@@ -18,6 +18,10 @@ public class WorkAssignmentsController : ControllerBase
 {
     private const string StatusDodijeljeno = "Dodijeljeno";
 
+    private const string HistoryEventStatusChanged = "StatusChanged";
+    private const string HistoryEventAssigned = "Assigned";
+    private const string HistoryEventReassigned = "Reassigned";
+
     // Privremeni placeholder dok JWT autentikacija ne postoji u API-ju - vidi seed
     // AppUser Id=1 ("Sistem") u EKvaroviDbContext. Kad autentikacija bude ozicena,
     // ovo se zamjenjuje s identitetom prijavljenog Managera/Admina iz JWT claima.
@@ -127,7 +131,9 @@ public class WorkAssignmentsController : ControllerBase
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<WorkAssignmentDto>> CreateWorkAssignment(CreateWorkAssignmentDto dto)
     {
-        var faultReport = await _context.FaultReports.FirstOrDefaultAsync(fr => fr.Id == dto.FaultReportId);
+        var faultReport = await _context.FaultReports
+            .Include(fr => fr.FaultStatus)
+            .FirstOrDefaultAsync(fr => fr.Id == dto.FaultReportId);
         if (faultReport is null)
         {
             return NotFound($"Prijava s Id={dto.FaultReportId} ne postoji.");
@@ -153,6 +159,7 @@ public class WorkAssignmentsController : ControllerBase
         }
 
         var now = DateTime.UtcNow;
+        var previousStatusName = faultReport.FaultStatus?.Name;
 
         var workAssignment = new WorkAssignment
         {
@@ -168,6 +175,13 @@ public class WorkAssignmentsController : ControllerBase
         _context.WorkAssignments.Add(workAssignment);
         faultReport.FaultStatusId = dodijeljenoStatus.Id;
         faultReport.UpdatedAt = now;
+
+        var appUserId = User.GetAppUserId();
+        _context.FaultReportHistoryEvents.AddRange(
+            FaultReportHistoryEvents.Create(
+                dto.FaultReportId, HistoryEventAssigned, null, $"{technician.FirstName} {technician.LastName}", appUserId, now),
+            FaultReportHistoryEvents.Create(
+                dto.FaultReportId, HistoryEventStatusChanged, previousStatusName, dodijeljenoStatus.Name, appUserId, now));
 
         await _context.SaveChangesAsync();
 
@@ -203,6 +217,8 @@ public class WorkAssignmentsController : ControllerBase
             return BadRequest("Odabrani zaposlenik ne postoji ili nema ulogu Izvršitelj.");
         }
 
+        var oldTechnician = await _context.Employees.FirstOrDefaultAsync(e => e.Id == currentAssignment.TechnicianId);
+
         var now = DateTime.UtcNow;
 
         // Transakcija osigurava da se deaktivacija stare i kreiranje nove aktivne
@@ -227,6 +243,11 @@ public class WorkAssignmentsController : ControllerBase
         };
 
         _context.WorkAssignments.Add(newAssignment);
+
+        var oldTechnicianName = oldTechnician is not null ? $"{oldTechnician.FirstName} {oldTechnician.LastName}" : "Nepoznato";
+        _context.FaultReportHistoryEvents.Add(FaultReportHistoryEvents.Create(
+            faultReportId, HistoryEventReassigned, oldTechnicianName, $"{newTechnician.FirstName} {newTechnician.LastName}",
+            User.GetAppUserId(), now));
 
         await _context.SaveChangesAsync();
         await transaction.CommitAsync();

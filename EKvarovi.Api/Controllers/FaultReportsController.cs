@@ -21,6 +21,10 @@ public class FaultReportsController : ControllerBase
     private const string PriorityKritican = "Kritičan";
     private const string InterventionStatusZavrsena = "Završena";
 
+    private const string HistoryEventStatusChanged = "StatusChanged";
+    private const string HistoryEventTypeSet = "TypeSet";
+    private const string HistoryEventPriorityChanged = "PriorityChanged";
+
     private readonly EKvaroviDbContext _context;
 
     // Expression (ne obicna metoda) - EF Core je mora prevesti u SQL projekciju,
@@ -183,6 +187,10 @@ public class FaultReportsController : ControllerBase
         _context.FaultReports.Add(faultReport);
         await _context.SaveChangesAsync();
 
+        _context.FaultReportHistoryEvents.Add(FaultReportHistoryEvents.Create(
+            faultReport.Id, HistoryEventStatusChanged, null, zaprimljenoStatus.Name, User.GetAppUserId(), now));
+        await _context.SaveChangesAsync();
+
         var createdDto = await _context.FaultReports
             .Where(fr => fr.Id == faultReport.Id)
             .Select(ToDtoProjection)
@@ -238,6 +246,12 @@ public class FaultReportsController : ControllerBase
         faultReport.FaultStatusId = pregledanoStatus.Id;
         faultReport.UpdatedAt = DateTime.UtcNow;
 
+        var appUserId = User.GetAppUserId();
+        _context.FaultReportHistoryEvents.AddRange(
+            FaultReportHistoryEvents.Create(id, HistoryEventTypeSet, null, faultType.Name, appUserId, faultReport.UpdatedAt),
+            FaultReportHistoryEvents.Create(id, HistoryEventPriorityChanged, null, faultPriority.Name, appUserId, faultReport.UpdatedAt),
+            FaultReportHistoryEvents.Create(id, HistoryEventStatusChanged, StatusZaprimljeno, StatusPregledano, appUserId, faultReport.UpdatedAt));
+
         await _context.SaveChangesAsync();
 
         return NoContent();
@@ -282,9 +296,43 @@ public class FaultReportsController : ControllerBase
         faultReport.FaultStatusId = zatvorenoStatus.Id;
         faultReport.UpdatedAt = DateTime.UtcNow;
 
+        _context.FaultReportHistoryEvents.Add(FaultReportHistoryEvents.Create(
+            id, HistoryEventStatusChanged, StatusRijeseno, StatusZatvoreno, User.GetAppUserId(), faultReport.UpdatedAt));
+
         await _context.SaveChangesAsync();
 
         return NoContent();
+    }
+
+    // Ista dostupnost kao GET api/fault-reports/{id} - Technician treba vidjeti
+    // vremensku crtu na ekranu svog naloga, ne samo Admin/Manager.
+    [HttpGet("{id:int}/history")]
+    [Authorize(Roles = "Admin,Manager,Technician")]
+    public async Task<ActionResult<List<FaultReportHistoryEventDto>>> GetFaultReportHistory(int id)
+    {
+        var faultReportExists = await _context.FaultReports.AnyAsync(fr => fr.Id == id);
+        if (!faultReportExists)
+        {
+            return NotFound();
+        }
+
+        var history = await _context.FaultReportHistoryEvents
+            .Where(h => h.FaultReportId == id)
+            .OrderBy(h => h.ChangedAt)
+            .Select(h => new FaultReportHistoryEventDto
+            {
+                Id = h.Id,
+                EventType = h.EventType,
+                OldValue = h.OldValue,
+                NewValue = h.NewValue,
+                ChangedAt = h.ChangedAt,
+                ChangedByName = h.ChangedByAppUser == null
+                    ? "Sustav"
+                    : (h.ChangedByAppUser.DisplayName != "" ? h.ChangedByAppUser.DisplayName : h.ChangedByAppUser.Email)
+            })
+            .ToListAsync();
+
+        return Ok(history);
     }
 
     [HttpDelete("{id:int}")]

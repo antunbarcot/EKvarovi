@@ -12,4 +12,13 @@ public static class ClaimsPrincipalExtensions
         var claim = user.FindFirst("EmployeeId")?.Value;
         return claim is not null && int.TryParse(claim, out var employeeId) ? employeeId : null;
     }
+
+    // AppUserId (za razliku od EmployeeId) identificira RACUN koji je izveo akciju,
+    // neovisno o tome ima li taj racun povezani Employee profil - koristi se za
+    // ChangedByAppUserId na FaultReportHistoryEvent zapisima.
+    public static int? GetAppUserId(this ClaimsPrincipal user)
+    {
+        var claim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return claim is not null && int.TryParse(claim, out var appUserId) ? appUserId : null;
+    }
 }

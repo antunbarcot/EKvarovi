@@ -1,10 +1,52 @@
 @using System.Net.Http.Json
 @using EKvarovi.Shared.DTOs
 @inject HttpClient Http
+@inject CurrentUserService CurrentUserService
+@inject ISnackbar Snackbar
 
 <MudDialog>
     <DialogContent>
         <MudText Typo="Typo.body2" Class="mb-3">@Existing.Description</MudText>
+
+        @if (CurrentUserService.IsInRole("Admin") || CurrentUserService.IsInRole("Manager"))
+        {
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Secondary"
+                       StartIcon="@Icons.Material.Filled.AutoAwesome"
+                       OnClick="GetAiSuggestionAsync" Disabled="_isLoadingSuggestion" Class="mb-3">
+                @if (_isLoadingSuggestion)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                AI prijedlog
+            </MudButton>
+
+            @if (_suggestionErrorMessage is not null)
+            {
+                <MudAlert Severity="Severity.Warning" Class="mb-3">@_suggestionErrorMessage</MudAlert>
+            }
+
+            @if (_suggestion is not null)
+            {
+                <MudAlert Severity="Severity.Info" Class="mb-3">
+                    <MudText Typo="Typo.subtitle2" Class="mb-1">AI prijedlog (provjerite prije potvrde)</MudText>
+                    @if (!string.IsNullOrWhiteSpace(_suggestion.SuggestedTitle))
+                    {
+                        <MudText Typo="Typo.body2">Naslov: @_suggestion.SuggestedTitle</MudText>
+                    }
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mt-1">
+                        <MudText Typo="Typo.body2">Tip kvara:</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info">@_suggestion.SuggestedFaultTypeName</MudChip>
+                        <MudText Typo="Typo.body2">Prioritet:</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="@SuggestionPriorityColor">@_suggestion.SuggestedFaultPriorityName</MudChip>
+                    </MudStack>
+                    <MudText Typo="Typo.body2" Class="mt-2"><em>@_suggestion.Reasoning</em></MudText>
+                    <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" Class="mt-2"
+                               OnClick="ApplySuggestion">
+                        Primijeni prijedlog
+                    </MudButton>
+                </MudAlert>
+            }
+        }
 
         <MudForm @ref="_form" Model="_model">
             <MudSelect T="int" @bind-Value="_model.FaultTypeId" Label="Tip kvara" Required="true"
@@ -53,8 +95,74 @@
     private string? _errorMessage;
     private bool _isSaving;
 
+    private FaultReportSuggestionDto? _suggestion;
+    private string? _suggestionErrorMessage;
+    private bool _isLoadingSuggestion;
+
     private bool _isCriticalSelected =>
         FaultPriorities.FirstOrDefault(p => p.Id == _model.FaultPriorityId)?.Name == PriorityKritican;
+
+    private Color SuggestionPriorityColor => _suggestion?.SuggestedFaultPriorityName switch
+    {
+        "Kritičan" => Color.Error,
+        "Visok" => Color.Warning,
+        "Srednji" => Color.Info,
+        "Nizak" => Color.Success,
+        _ => Color.Default
+    };
+
+    private async Task GetAiSuggestionAsync()
+    {
+        _isLoadingSuggestion = true;
+        _suggestionErrorMessage = null;
+        _suggestion = null;
+
+        try
+        {
+            var request = new FaultReportSuggestionRequestDto { Description = Existing.Description };
+            var response = await Http.PostAsJsonAsync("api/ai/fault-report-suggestion", request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _suggestion = await response.Content.ReadFromJsonAsync<FaultReportSuggestionDto>();
+            }
+            else
+            {
+                _suggestionErrorMessage = "AI prijedlog trenutno nije dostupan.";
+            }
+        }
+        catch (Exception)
+        {
+            _suggestionErrorMessage = "AI prijedlog trenutno nije dostupan.";
+        }
+        finally
+        {
+            _isLoadingSuggestion = false;
+        }
+    }
+
+    // Samo popunjava postojeca polja u formi - ne salje nista na server. Korisnik
+    // svejedno mora kliknuti glavni "Spremi pregled" gumb da potvrdi (ili moze
+    // promijeniti popunjene vrijednosti prije spremanja ako se ne slaze s prijedlogom).
+    private void ApplySuggestion()
+    {
+        if (_suggestion is null)
+        {
+            return;
+        }
+
+        if (_suggestion.SuggestedFaultTypeId.HasValue)
+        {
+            _model.FaultTypeId = _suggestion.SuggestedFaultTypeId.Value;
+        }
+
+        if (_suggestion.SuggestedFaultPriorityId.HasValue)
+        {
+            _model.FaultPriorityId = _suggestion.SuggestedFaultPriorityId.Value;
+        }
+
+        Snackbar.Add("Prijedlog je primijenjen u formu — provjerite polja prije spremanja.", Severity.Info);
+    }
 
     private async Task SubmitAsync()
     {

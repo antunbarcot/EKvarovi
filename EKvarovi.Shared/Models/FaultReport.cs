@@ -21,4 +21,5 @@ public class FaultReport
     public FaultStatus? FaultStatus { get; set; }
     public ICollection<WorkAssignment> WorkAssignments { get; set; } = new List<WorkAssignment>();
     public ICollection<Attachment> Attachments { get; set; } = new List<Attachment>();
+    public ICollection<FaultReportHistoryEvent> HistoryEvents { get; set; } = new List<FaultReportHistoryEvent>();
 }

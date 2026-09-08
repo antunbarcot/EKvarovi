@@ -238,6 +238,31 @@ Table Attachments {
 
 
 // ---------------------------------------------------------------------
+// VREMENSKA CRTA (povijest promjena statusa/prioriteta/dodjela)
+// ---------------------------------------------------------------------
+
+Table FaultReportHistoryEvents {
+  Id int [pk, increment]
+  FaultReportId int [not null]
+  EventType varchar(50) [not null, note: 'StatusChanged / PriorityChanged / TypeSet / Assigned / Reassigned - obicni string (interni tehnicki zapis), ne lookup/enum']
+  OldValue varchar(200) [null, note: 'Null ako je ovo prvi put da je vrijednost postavljena (npr. prvi tip/prioritet)']
+  NewValue varchar(200) [not null]
+  ChangedAt datetime [not null]
+  ChangedByAppUserId int [null, note: 'Null = sistemska promjena bez izravnog korisnickog unosa; za automatske prijelaze (npr. Rijeseno nakon uspjesne intervencije) upisuje se korisnik koji je tehnicki uzrokovao promjenu (npr. zavrsio intervenciju)']
+
+  Note: '''
+  Automatski nusprodukt postojecih akcija (kreiranje prijave, pregled,
+  dodjela/ponovna dodjela, pokretanje/zavrsetak intervencije, zatvaranje) -
+  NEMA zaseban CRUD za rucni unos. Cascade delete na FaultReports (za
+  razliku od ostalih veza, koje su Restrict) jer je ovo cisto izvedeni log
+  bez vlastitog poslovnog znacenja odvojenog od prijave.
+  Postojece prijave kreirane PRIJE uvodenja ove tablice nemaju (potpunu)
+  povijest - ocekivano, ne bug.
+  '''
+}
+
+
+// ---------------------------------------------------------------------
 // KORISNICKI RACUNI (odvojeno od poslovnih profila Employee)
 // ---------------------------------------------------------------------
 
@@ -294,6 +319,9 @@ Ref: Attachments.InterventionId > Interventions.Id
 Ref: Attachments.AttachmentPurposeId > AttachmentPurposes.Id
 Ref: Attachments.UploadedByAppUserId > AppUsers.Id
 
+Ref: FaultReportHistoryEvents.FaultReportId > FaultReports.Id [delete: cascade]
+Ref: FaultReportHistoryEvents.ChangedByAppUserId > AppUsers.Id
+
 Ref: AppUsers.EmployeeId > Employees.Id
 Ref: AppUserRoles.AppUserId > AppUsers.Id
 Ref: AppUserRoles.AppRoleId > AppRoles.Id
@@ -329,6 +357,10 @@ TableGroup RadIIntervencije {
 
 TableGroup Privici {
   Attachments
+}
+
+TableGroup VremenskaCrta {
+  FaultReportHistoryEvents
 }
 
 TableGroup Korisnici {

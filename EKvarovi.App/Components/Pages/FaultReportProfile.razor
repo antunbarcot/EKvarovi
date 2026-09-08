@@ -79,6 +79,37 @@ else
         }
     </MudPaper>
 
+    <MudText Typo="Typo.h5" Class="mb-3">Vremenska crta</MudText>
+
+    @if (_isLoadingHistory)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    }
+    else if (_historyErrorMessage is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-6">@_historyErrorMessage</MudAlert>
+    }
+    else if (_history.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-6">Nema zabilježenih promjena.</MudAlert>
+    }
+    else
+    {
+        <MudTimeline TimelinePosition="TimelinePosition.Right" Class="mb-6">
+            @foreach (var historyEvent in _history)
+            {
+                <MudTimelineItem Color="@HistoryEventColor(historyEvent.EventType)" Icon="@HistoryEventIcon(historyEvent.EventType)">
+                    <ItemContent>
+                        <MudText Typo="Typo.body1">@HistoryEventDescription(historyEvent)</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                            @historyEvent.ChangedByName · @historyEvent.ChangedAt.ToString("dd.MM.yyyy. HH:mm")
+                        </MudText>
+                    </ItemContent>
+                </MudTimelineItem>
+            }
+        </MudTimeline>
+    }
+
     <MudText Typo="Typo.h5" Class="mb-3">Dodjele</MudText>
 
     @if (!_isLoadingAssignments && (CurrentUserService.IsInRole("Admin") || CurrentUserService.IsInRole("Manager")))
@@ -118,10 +149,19 @@ else
             <MudPaper Class="pa-3 mb-3" Elevation="2">
                 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                     <MudText Typo="Typo.subtitle1">@assignment.TechnicianName</MudText>
-                    @if (assignment.IsActive)
-                    {
-                        <MudChip T="string" Color="Color.Success" Size="Size.Small">Aktivna</MudChip>
-                    }
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        @if (assignment.IsActive)
+                        {
+                            <MudChip T="string" Color="Color.Success" Size="Size.Small">Aktivna</MudChip>
+                        }
+                        @if (HasInterventions(assignment.Id) && (CurrentUserService.IsInRole("Admin") || CurrentUserService.IsInRole("Manager")))
+                        {
+                            <MudTooltip Text="AI sažetak radnog naloga">
+                                <MudIconButton Icon="@Icons.Material.Filled.Summarize" Size="Size.Small" Color="Color.Secondary"
+                                               OnClick="@(() => ShowAiSummaryAsync(assignment.Id))" />
+                            </MudTooltip>
+                        }
+                    </MudStack>
                 </MudStack>
                 <MudText Typo="Typo.body2">Dodijeljeno: @assignment.AssignedAt.ToString("dd.MM.yyyy HH:mm")</MudText>
                 <MudText Typo="Typo.body2">
@@ -381,11 +421,13 @@ else
     private List<MaterialDto> _materials = new();
     private List<AttachmentDto> _attachments = new();
     private List<LookupDto> _attachmentPurposes = new();
+    private List<FaultReportHistoryEventDto> _history = new();
 
     private bool _isLoadingReport = true;
     private bool _isLoadingAssignments = true;
     private bool _isLoadingInterventions = true;
     private bool _isLoadingAttachments = true;
+    private bool _isLoadingHistory = true;
     private bool _isStartingIntervention;
     private bool _isAddingMaterial;
     private bool _isUploading;
@@ -397,6 +439,7 @@ else
     private string? _materialErrorMessage;
     private string? _attachmentsErrorMessage;
     private string? _uploadErrorMessage;
+    private string? _historyErrorMessage;
 
     private IBrowserFile? _selectedFile;
     private int? _selectedPurposeId;
@@ -420,7 +463,61 @@ else
         await LoadInterventionsAsync();
         await LoadAttachmentPurposesAsync();
         await LoadAttachmentsAsync();
+        await LoadHistoryAsync();
     }
+
+    private async Task LoadHistoryAsync()
+    {
+        _isLoadingHistory = true;
+        _historyErrorMessage = null;
+
+        try
+        {
+            _history = await Http.GetFromJsonAsync<List<FaultReportHistoryEventDto>>($"api/fault-reports/{Id}/history") ?? new();
+        }
+        catch (Exception ex)
+        {
+            _historyErrorMessage = $"Greška prilikom dohvaćanja povijesti: {ex.Message}";
+        }
+        finally
+        {
+            _isLoadingHistory = false;
+        }
+    }
+
+    private static string HistoryEventIcon(string eventType) => eventType switch
+    {
+        "StatusChanged" => Icons.Material.Filled.Flag,
+        "PriorityChanged" => Icons.Material.Filled.PriorityHigh,
+        "TypeSet" => Icons.Material.Filled.Category,
+        "Assigned" => Icons.Material.Filled.PersonAdd,
+        "Reassigned" => Icons.Material.Filled.SwapHoriz,
+        _ => Icons.Material.Filled.History
+    };
+
+    private static Color HistoryEventColor(string eventType) => eventType switch
+    {
+        "StatusChanged" => Color.Primary,
+        "PriorityChanged" => Color.Warning,
+        "TypeSet" => Color.Info,
+        "Assigned" => Color.Success,
+        "Reassigned" => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private static string HistoryEventDescription(FaultReportHistoryEventDto historyEvent) => historyEvent.EventType switch
+    {
+        "StatusChanged" => historyEvent.OldValue is null
+            ? $"Status postavljen: {historyEvent.NewValue}"
+            : $"Status promijenjen: {historyEvent.OldValue} → {historyEvent.NewValue}",
+        "PriorityChanged" => historyEvent.OldValue is null
+            ? $"Prioritet postavljen: {historyEvent.NewValue}"
+            : $"Prioritet promijenjen: {historyEvent.OldValue} → {historyEvent.NewValue}",
+        "TypeSet" => $"Tip kvara postavljen: {historyEvent.NewValue}",
+        "Assigned" => $"Dodijeljen izvršitelj: {historyEvent.NewValue}",
+        "Reassigned" => $"Izvršitelj promijenjen: {historyEvent.OldValue} → {historyEvent.NewValue}",
+        _ => $"{historyEvent.EventType}: {historyEvent.OldValue} → {historyEvent.NewValue}"
+    };
 
     private async Task LoadTechniciansAsync()
     {
@@ -502,7 +599,22 @@ else
             await LoadFaultReportAsync();
             await LoadAssignmentsAsync();
             await LoadInterventionsAsync();
+            await LoadHistoryAsync();
         }
+    }
+
+    private bool HasInterventions(int workAssignmentId) =>
+        _interventions.Any(i => i.WorkAssignmentId == workAssignmentId);
+
+    private async Task ShowAiSummaryAsync(int workAssignmentId)
+    {
+        var parameters = new DialogParameters<AiWorkOrderSummaryDialog>
+        {
+            { x => x.WorkAssignmentId, workAssignmentId }
+        };
+        var options = new DialogOptions { FullWidth = true, MaxWidth = MaxWidth.Small, CloseOnEscapeKey = true };
+
+        await DialogService.ShowAsync<AiWorkOrderSummaryDialog>("AI sažetak radnog naloga", parameters, options);
     }
 
     private async Task OpenReassignDialogAsync()
@@ -522,6 +634,7 @@ else
             await LoadFaultReportAsync();
             await LoadAssignmentsAsync();
             await LoadInterventionsAsync();
+            await LoadHistoryAsync();
         }
     }
 
@@ -575,6 +688,7 @@ else
                 Snackbar.Add("Intervencija je pokrenuta.", Severity.Success);
                 await LoadFaultReportAsync();
                 await LoadInterventionsAsync();
+                await LoadHistoryAsync();
             }
             else
             {
@@ -656,6 +770,7 @@ else
             Snackbar.Add("Intervencija je završena.", Severity.Success);
             await LoadFaultReportAsync();
             await LoadInterventionsAsync();
+            await LoadHistoryAsync();
         }
     }
 
@@ -682,6 +797,7 @@ else
             {
                 Snackbar.Add("Prijava je zatvorena.", Severity.Success);
                 await LoadFaultReportAsync();
+                await LoadHistoryAsync();
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
             {

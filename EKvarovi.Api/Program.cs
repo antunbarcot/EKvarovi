@@ -1,5 +1,6 @@
 using System.Text;
 using EKvarovi.Api.Data;
+using EKvarovi.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -61,6 +62,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 builder.Services.AddAuthorization();
+
+// Provider je "Mock" za sada (radi bez API kljuca) - stvarni provider (npr. OpenAI)
+// dodaje se kasnije kao zamjena registracije ispod, iza istog IAiService sucelja.
+// ApiKey (kad zatreba) ide iskljucivo kroz dotnet user-secrets, nikad u appsettings.json.
+builder.Services.Configure<AiServiceOptions>(builder.Configuration.GetSection("Ai"));
+builder.Services.AddScoped<IAiService, MockAiService>();
 
 var app = builder.Build();
 

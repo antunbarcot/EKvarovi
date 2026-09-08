@@ -23,6 +23,8 @@ public class InterventionsController : ControllerBase
     private const string FaultStatusURadu = "U radu";
     private const string FaultStatusRijeseno = "Riješeno";
 
+    private const string HistoryEventStatusChanged = "StatusChanged";
+
     private readonly EKvaroviDbContext _context;
 
     private static readonly Expression<Func<Intervention, InterventionDto>> ToDtoProjection = i => new InterventionDto
@@ -168,11 +170,20 @@ public class InterventionsController : ControllerBase
             return BadRequest($"Status \"{FaultStatusURadu}\" nije pronađen u šifrarniku statusa prijava.");
         }
 
-        var faultReport = await _context.FaultReports.FirstOrDefaultAsync(fr => fr.Id == workAssignment.FaultReportId);
+        var faultReport = await _context.FaultReports
+            .Include(fr => fr.FaultStatus)
+            .FirstOrDefaultAsync(fr => fr.Id == workAssignment.FaultReportId);
         if (faultReport is null)
         {
             return BadRequest("Nalog nije povezan s postojećom prijavom.");
         }
+
+        // Status prijave se biljezi u povijest SAMO kod prve intervencije na ovoj dodjeli -
+        // ako je prethodna na istoj dodjeli bila neuspjesna, prijava je vec "U radu" i ovdje
+        // se nista stvarno ne mijenja, pa nema smisla dodavati jos jedan StatusChanged zapis.
+        var isFirstInterventionOnAssignment = !await _context.Interventions
+            .AnyAsync(i => i.WorkAssignmentId == dto.WorkAssignmentId);
+        var previousStatusName = faultReport.FaultStatus?.Name;
 
         var now = DateTime.UtcNow;
 
@@ -190,6 +201,12 @@ public class InterventionsController : ControllerBase
         _context.Interventions.Add(intervention);
         faultReport.FaultStatusId = uRaduStatus.Id;
         faultReport.UpdatedAt = now;
+
+        if (isFirstInterventionOnAssignment)
+        {
+            _context.FaultReportHistoryEvents.Add(FaultReportHistoryEvents.Create(
+                faultReport.Id, HistoryEventStatusChanged, previousStatusName, uRaduStatus.Name, User.GetAppUserId(), now));
+        }
 
         await _context.SaveChangesAsync();
 
@@ -263,6 +280,9 @@ public class InterventionsController : ControllerBase
             {
                 faultReport.FaultStatusId = rijesenoStatus.Id;
                 faultReport.UpdatedAt = DateTime.UtcNow;
+
+                _context.FaultReportHistoryEvents.Add(FaultReportHistoryEvents.Create(
+                    faultReport.Id, HistoryEventStatusChanged, FaultStatusURadu, rijesenoStatus.Name, User.GetAppUserId(), faultReport.UpdatedAt));
             }
         }
         else

@@ -14,4 +14,5 @@ public class AppUser
     public ICollection<AppUserRole> UserRoles { get; set; } = new List<AppUserRole>();
     public ICollection<WorkAssignment> AssignedWorkAssignments { get; set; } = new List<WorkAssignment>();
     public ICollection<Attachment> UploadedAttachments { get; set; } = new List<Attachment>();
+    public ICollection<FaultReportHistoryEvent> ChangedHistoryEvents { get; set; } = new List<FaultReportHistoryEvent>();
 }

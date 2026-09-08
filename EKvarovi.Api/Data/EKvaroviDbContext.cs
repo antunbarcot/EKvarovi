@@ -26,6 +26,7 @@ public class EKvaroviDbContext : DbContext
     public DbSet<Material> Materials => Set<Material>();
     public DbSet<InterventionMaterial> InterventionMaterials => Set<InterventionMaterial>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
+    public DbSet<FaultReportHistoryEvent> FaultReportHistoryEvents => Set<FaultReportHistoryEvent>();
 
     public DbSet<AppUser> AppUsers => Set<AppUser>();
     public DbSet<AppUserRole> AppUserRoles => Set<AppUserRole>();
@@ -232,6 +233,27 @@ public class EKvaroviDbContext : DbContext
                 .WithMany(x => x.UploadedAttachments)
                 .HasForeignKey(x => x.UploadedByAppUserId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<FaultReportHistoryEvent>(e =>
+        {
+            // Za razliku od ostalih veza na FaultReport (Restrict, jer se prijave s
+            // vezama ne brisu fizicki), povijest je cisto izvedeni "log" podatak bez
+            // vlastitog poslovnog znacenja odvojenog od prijave - pa Cascade ovdje.
+            e.HasOne(x => x.FaultReport)
+                .WithMany(x => x.HistoryEvents)
+                .HasForeignKey(x => x.FaultReportId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // ChangedByAppUserId je nullable (sistemske promjene) - Restrict da brisanje
+            // AppUser racuna ne obrise povijest koju je taj korisnik napravio.
+            e.HasOne(x => x.ChangedByAppUser)
+                .WithMany(x => x.ChangedHistoryEvents)
+                .HasForeignKey(x => x.ChangedByAppUserId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasIndex(x => x.FaultReportId);
         });
     }
 

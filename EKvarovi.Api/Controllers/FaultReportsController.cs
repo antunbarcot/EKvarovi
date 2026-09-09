@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using System.Text;
 using EKvarovi.Api.Auth;
 using EKvarovi.Api.Data;
 using EKvarovi.Shared.DTOs;
@@ -6,6 +7,9 @@ using EKvarovi.Shared.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
 
 namespace EKvarovi.Api.Controllers;
 
@@ -60,6 +64,20 @@ public class FaultReportsController : ControllerBase
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<List<FaultReportDto>>> GetFaultReports([FromQuery] FaultReportQueryParametersDto parameters)
     {
+        var query = BuildFilteredQuery(parameters);
+
+        var faultReports = await query
+            .Select(ToDtoProjection)
+            .ToListAsync();
+
+        return Ok(faultReports);
+    }
+
+    // Zajednicko filtriranje + sortiranje za GET (lista) i oba export endpointa -
+    // export MORA postivati ISTE filtere kao trenutni prikaz liste, pa se namjerno
+    // ne duplicira logika po tri mjesta.
+    private IQueryable<FaultReport> BuildFilteredQuery(FaultReportQueryParametersDto parameters)
+    {
         IQueryable<FaultReport> query = _context.FaultReports;
 
         if (!string.IsNullOrWhiteSpace(parameters.Search))
@@ -97,13 +115,113 @@ public class FaultReportsController : ControllerBase
             query = query.Where(fr => fr.CreatedAt <= parameters.DateTo.Value);
         }
 
-        query = ApplySorting(query, parameters.SortBy, parameters.SortDescending);
+        return ApplySorting(query, parameters.SortBy, parameters.SortDescending);
+    }
 
-        var faultReports = await query
-            .Select(ToDtoProjection)
-            .ToListAsync();
+    [HttpGet("export/csv")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<IActionResult> ExportCsv([FromQuery] FaultReportQueryParametersDto parameters)
+    {
+        var rows = await BuildFilteredQuery(parameters).Select(ToDtoProjection).ToListAsync();
 
-        return Ok(faultReports);
+        var csv = new StringBuilder();
+        csv.AppendLine(string.Join(",", "Opis", "Lokacija", "Prijavitelj", "Tip", "Prioritet", "Status", "Rok", "Kreirano"));
+
+        foreach (var row in rows)
+        {
+            csv.AppendLine(string.Join(",",
+                CsvEscape(row.Description),
+                CsvEscape(row.LocationName),
+                CsvEscape(row.ReporterName),
+                CsvEscape(row.FaultTypeName),
+                CsvEscape(row.FaultPriorityName),
+                CsvEscape(row.FaultStatusName),
+                CsvEscape(row.DueDate?.ToString("dd.MM.yyyy") ?? "-"),
+                CsvEscape(row.CreatedAt.ToString("dd.MM.yyyy HH:mm"))));
+        }
+
+        // UTF-8 BOM ispred sadrzaja - bez njega Excel CSV s hrvatskim dijakriticima
+        // (š, đ, č, ć, ž) cita kao Windows-1250/ANSI i slova ispadnu iskrivljena.
+        var bytes = Encoding.UTF8.GetPreamble()
+            .Concat(Encoding.UTF8.GetBytes(csv.ToString()))
+            .ToArray();
+
+        return File(bytes, "text/csv", "fault-reports-export.csv");
+    }
+
+    private static string CsvEscape(string value)
+    {
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n') || value.Contains('\r'))
+        {
+            return "\"" + value.Replace("\"", "\"\"") + "\"";
+        }
+
+        return value;
+    }
+
+    [HttpGet("export/pdf")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<IActionResult> ExportPdf([FromQuery] FaultReportQueryParametersDto parameters)
+    {
+        var rows = await BuildFilteredQuery(parameters).Select(ToDtoProjection).ToListAsync();
+        var generatedAt = DateTime.Now;
+
+        var document = QuestPDF.Fluent.Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4.Landscape());
+                page.Margin(30);
+                page.DefaultTextStyle(x => x.FontSize(9));
+
+                page.Header().Column(column =>
+                {
+                    column.Item().Text("Izvještaj o prijavama kvarova").FontSize(18).Bold();
+                    column.Item().Text($"Generirano: {generatedAt:dd.MM.yyyy HH:mm}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                });
+
+                page.Content().PaddingTop(15).Table(table =>
+                {
+                    table.ColumnsDefinition(columns =>
+                    {
+                        columns.RelativeColumn(3);
+                        columns.RelativeColumn(2);
+                        columns.RelativeColumn(2);
+                        columns.RelativeColumn(2);
+                        columns.RelativeColumn(2);
+                        columns.RelativeColumn(2);
+                        columns.RelativeColumn(2);
+                        columns.RelativeColumn(2);
+                    });
+
+                    table.Header(header =>
+                    {
+                        foreach (var title in new[] { "Opis", "Lokacija", "Prijavitelj", "Tip", "Prioritet", "Status", "Rok", "Kreirano" })
+                        {
+                            header.Cell().Background(Colors.Grey.Lighten2).Padding(4).Text(title).Bold();
+                        }
+                    });
+
+                    foreach (var row in rows)
+                    {
+                        table.Cell().Padding(4).Text(row.Description);
+                        table.Cell().Padding(4).Text(row.LocationName);
+                        table.Cell().Padding(4).Text(row.ReporterName);
+                        table.Cell().Padding(4).Text(row.FaultTypeName);
+                        table.Cell().Padding(4).Text(row.FaultPriorityName);
+                        table.Cell().Padding(4).Text(row.FaultStatusName);
+                        table.Cell().Padding(4).Text(row.DueDate?.ToString("dd.MM.yyyy") ?? "-");
+                        table.Cell().Padding(4).Text(row.CreatedAt.ToString("dd.MM.yyyy HH:mm"));
+                    }
+                });
+
+                page.Footer().AlignCenter().Text($"Ukupno prijava: {rows.Count}").FontSize(9);
+            });
+        });
+
+        var bytes = document.GeneratePdf();
+
+        return File(bytes, "application/pdf", "fault-reports-export.pdf");
     }
 
     // Identitet se cita ISKLJUCIVO iz JWT "EmployeeId" claima, nikad iz parametra koji

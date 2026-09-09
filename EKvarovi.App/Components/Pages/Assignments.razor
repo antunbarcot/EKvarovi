@@ -16,13 +16,13 @@
 
 @if (_isLoading)
 {
-    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    <TableSkeleton />
 }
 else if (_errorMessage is null)
 {
     if (_assignments.Count == 0)
     {
-        <MudAlert Severity="Severity.Info">Trenutno nema aktivnih dodjela.</MudAlert>
+        <EmptyState Icon="@Icons.Material.Filled.AssignmentInd" Message="Trenutno nema aktivnih dodjela." />
     }
     else
     {

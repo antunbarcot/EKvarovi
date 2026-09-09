@@ -5,6 +5,10 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
+// QuestPDF trazi eksplicitnu potvrdu licence prije generiranja bilo kojeg dokumenta -
+// Community licenca je besplatna (limit prihoda/imovine koji ovaj projekt ne dotice).
+QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.

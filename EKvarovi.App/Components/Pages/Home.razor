@@ -42,7 +42,7 @@ else if (_isFullDashboard)
         @foreach (var tile in BuildDashboardTiles(_dashboard!))
         {
             <MudItem xs="12" sm="6" md="4">
-                <MudPaper Class="pa-4 d-flex align-center gap-4" Elevation="2">
+                <MudPaper Class="pa-4 d-flex align-center gap-4" Style="@TileStyle(tile.Color)" Elevation="2">
                     <MudAvatar Color="@tile.Color" Variant="Variant.Filled">
                         <MudIcon Icon="@tile.Icon" />
                     </MudAvatar>
@@ -336,25 +336,34 @@ else
 
     private sealed record StatTile(string Label, string Value, string Icon, Color Color);
 
-    // Boja/ikona nosi ozbiljnost stanja (status boje), ne identitet metrike - "problem"
-    // kartice (kriticne/zakasnjele/bez izvrsitelja) su crvene/narancaste dok je brojac > 0,
-    // a kad padnu na 0 to je dobra vijest pa prelaze u zeleno. Cisto informativne metrike
-    // (otvorene prijave, aktivne intervencije, prosjek) ostaju neutralne (Info) jer same po
-    // sebi ne signaliziraju problem.
+    // Cisto vizualni tretman - suptilna pozadina i lijevi obrub u boji ozbiljnosti za
+    // kartice koje trenutno signaliziraju problem (Error/Warning), ostale kartice
+    // (Info/Success) ostaju na neutralnom izgledu kao dosad.
+    private static string TileStyle(Color color) => color switch
+    {
+        Color.Error => "background-color:rgba(244,67,54,0.08); border-left:4px solid #f44336;",
+        Color.Warning => "background-color:rgba(255,152,0,0.08); border-left:4px solid #ff9800;",
+        _ => string.Empty
+    };
+
+    // Boja nosi ozbiljnost stanja za "problem" kartice (kriticne/zakasnjele/bez
+    // izvrsitelja) - crvene/narancaste dok je brojac > 0. Kad padnu na 0 NE odlaze sve u
+    // istu zelenu (bile su vizualno identicne kad su sve tri "cisto") nego svaka dobiva
+    // svoju boju za "dobro" stanje, da se kartice medusobno razlikuju i kad nema problema.
+    // Ikona za te kartice ostaje FIKSNA (ne mijenja se u kvacicu na 0) iz istog razloga.
+    // Cisto informativne metrike (otvorene prijave, aktivne intervencije, prosjek) ne
+    // signaliziraju problem pa svaka dobiva svoju, medusobno razlicitu boju.
     private static List<StatTile> BuildDashboardTiles(DashboardDto d) => new()
     {
         new("Otvorene prijave", d.OpenFaultReportsCount.ToString(), Icons.Material.Filled.Inbox, Color.Info),
-        new("Kritične prijave", d.CriticalFaultReportsCount.ToString(),
-            d.CriticalFaultReportsCount > 0 ? Icons.Material.Filled.PriorityHigh : Icons.Material.Filled.CheckCircle,
+        new("Kritične prijave", d.CriticalFaultReportsCount.ToString(), Icons.Material.Filled.PriorityHigh,
             d.CriticalFaultReportsCount > 0 ? Color.Error : Color.Success),
-        new("Zakašnjele prijave", d.OverdueFaultReportsCount.ToString(),
-            d.OverdueFaultReportsCount > 0 ? Icons.Material.Filled.EventBusy : Icons.Material.Filled.CheckCircle,
-            d.OverdueFaultReportsCount > 0 ? Color.Error : Color.Success),
-        new("Bez izvršitelja", d.UnassignedFaultReportsCount.ToString(),
-            d.UnassignedFaultReportsCount > 0 ? Icons.Material.Filled.PersonOff : Icons.Material.Filled.CheckCircle,
-            d.UnassignedFaultReportsCount > 0 ? Color.Warning : Color.Success),
-        new("Aktivne intervencije", d.ActiveInterventionsCount.ToString(), Icons.Material.Filled.Build, Color.Info),
-        new("Prosječno vrijeme rješavanja", FormatHours(d.AverageResolutionTimeHours), Icons.Material.Filled.Timer, Color.Info)
+        new("Zakašnjele prijave", d.OverdueFaultReportsCount.ToString(), Icons.Material.Filled.EventBusy,
+            d.OverdueFaultReportsCount > 0 ? Color.Error : Color.Secondary),
+        new("Bez izvršitelja", d.UnassignedFaultReportsCount.ToString(), Icons.Material.Filled.PersonOff,
+            d.UnassignedFaultReportsCount > 0 ? Color.Warning : Color.Primary),
+        new("Aktivne intervencije", d.ActiveInterventionsCount.ToString(), Icons.Material.Filled.Build, Color.Tertiary),
+        new("Prosječno vrijeme rješavanja", FormatHours(d.AverageResolutionTimeHours), Icons.Material.Filled.Timer, Color.Dark)
     };
 
     private static string Truncate(string text, int maxLength = 60)
@@ -369,7 +378,7 @@ else
         "Dodijeljeno" => Color.Info,
         "U radu" => Color.Warning,
         "Riješeno" => Color.Success,
-        "Zatvoreno" => Color.Dark,
+        "Zatvoreno" => Color.Secondary,
         _ => Color.Default
     };
 }

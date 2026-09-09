@@ -1,9 +1,13 @@
 ﻿@inherits LayoutComponentBase
 @implements IDisposable
+@using System.Net.Http.Json
+@using EKvarovi.Shared.DTOs
 @inject CurrentUserService CurrentUserService
 @inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+@inject HttpClient Http
 
-<MudThemeProvider />
+<MudThemeProvider Theme="_theme" IsDarkMode="_isDarkMode" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
@@ -14,7 +18,32 @@
                        OnClick="@(() => _drawerOpen = !_drawerOpen)" />
         <MudText Typo="Typo.h6">e-Kvarovi Županije</MudText>
         <MudSpacer />
-        <MudText Typo="Typo.body2">Prijava i obrada kvarova</MudText>
+        @if (CurrentUserService.IsAuthenticated)
+        {
+            <MudAutocomplete T="SearchResultItem" Placeholder="Pretraži..." Variant="Variant.Filled" Margin="Margin.Dense"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Class="mx-4 mud-width-full global-search-field" Style="max-width:340px;" Dense="true" Clearable="true"
+                              SearchFunc="SearchGlobalAsync" ToStringFunc="@(item => item?.Label ?? string.Empty)"
+                              ValueChanged="OnSearchResultSelected" MinCharacters="2" DebounceInterval="300"
+                              CoerceText="false" ResetValueOnEmptyText="true">
+                <ItemTemplate Context="item">
+                    <div class="d-flex align-center ga-2">
+                        <MudIcon Icon="@item.Icon" Size="Size.Small" />
+                        <div>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">@item.CategoryLabel</MudText>
+                            <MudText Typo="Typo.body2">@item.Label</MudText>
+                        </div>
+                    </div>
+                </ItemTemplate>
+                <NoItemsTemplate>
+                    <MudText Class="pa-3" Typo="Typo.body2">Nema rezultata.</MudText>
+                </NoItemsTemplate>
+            </MudAutocomplete>
+        }
+        <MudTooltip Text="@(_isDarkMode ? "Uključi svijetlu temu" : "Uključi tamnu temu")">
+            <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
+                           Color="Color.Inherit" OnClick="ToggleDarkModeAsync" />
+        </MudTooltip>
     </MudAppBar>
 
     <MudDrawer @bind-Open="_drawerOpen" Elevation="1" Variant="DrawerVariant.Responsive" ClipMode="DrawerClipMode.Always">
@@ -37,8 +66,11 @@
     // [Authorize] na API-ju (to je stvarna sigurnost) - samo sprjecava da neprijavljen
     // korisnik gleda u praznu/slomljenu stranicu dok ceka da mu API vrati 401 na svaki poziv.
     private static readonly string[] PublicPaths = { "/login" };
+    private const string DarkModeStorageKey = "ekvarovi-dark-mode";
 
     private bool _drawerOpen = true;
+    private readonly AppTheme _theme = new();
+    private bool _isDarkMode;
 
     protected override async Task OnInitializedAsync()
     {
@@ -49,6 +81,113 @@
         // ostaje isti "prozor") - OnInitializedAsync gore pokriva samo prvo ucitavanje,
         // pa svaku sljedecu navigaciju (npr. klik na link prije prijave) hvatamo ovdje.
         NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    // OnAfterRender(Async) se NE poziva tijekom statickog prerendera (samo nakon sto se
+    // interaktivni krug uspostavi) - JS interop je ovdje siguran bez dodatnih provjera.
+    // Spremanje u localStorage (ne ProtectedLocalStorage) je namjerna odluka: preferencija
+    // teme nije osjetljiv podatak vezan uz identitet korisnika, pa nema potrebe za
+    // sifriranjem/potpisivanjem vrijednosti - obican localStorage je dovoljan i jednostavniji.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            var stored = await JS.InvokeAsync<string?>("localStorage.getItem", DarkModeStorageKey);
+            if (stored == "dark")
+            {
+                _isDarkMode = true;
+                StateHasChanged();
+            }
+        }
+        catch (JSException)
+        {
+            // Ostaje na defaultnoj (svijetloj) temi ako localStorage nije dostupan.
+        }
+    }
+
+    private async Task ToggleDarkModeAsync()
+    {
+        _isDarkMode = !_isDarkMode;
+
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", DarkModeStorageKey, _isDarkMode ? "dark" : "light");
+        }
+        catch (JSException)
+        {
+            // Preferenca se jednostavno ne pamti kroz sesije ako spremanje ne uspije -
+            // prekidac i dalje radi unutar trenutne sesije (in-memory _isDarkMode).
+        }
+    }
+
+    private sealed record SearchResultItem(string Category, string CategoryLabel, string Icon, int Id, string Label);
+
+    // MudAutocomplete nema ugradjeno grupiranje po kategoriji - rezultati se zato slazu
+    // u fiksnom redoslijedu (Prijave / Lokacije / Zaposlenici), a ItemTemplate ispod
+    // svakoj stavci ispisuje naziv kategorije + ikonu, sto vizualno postize isti ucinak.
+    private async Task<IEnumerable<SearchResultItem>> SearchGlobalAsync(string? value, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Trim().Length < 2)
+        {
+            return Array.Empty<SearchResultItem>();
+        }
+
+        try
+        {
+            var result = await Http.GetFromJsonAsync<GlobalSearchResultDto>(
+                $"api/search?query={Uri.EscapeDataString(value.Trim())}", cancellationToken);
+
+            if (result is null)
+            {
+                return Array.Empty<SearchResultItem>();
+            }
+
+            var items = new List<SearchResultItem>();
+            items.AddRange(result.FaultReports.Select(fr =>
+                new SearchResultItem("FaultReport", "Prijava", Icons.Material.Filled.ReportProblem, fr.Id, fr.Name)));
+            items.AddRange(result.Locations.Select(l =>
+                new SearchResultItem("Location", "Lokacija", Icons.Material.Filled.LocationOn, l.Id, l.Name)));
+            items.AddRange(result.Employees.Select(e =>
+                new SearchResultItem("Employee", "Zaposlenik", Icons.Material.Filled.Person, e.Id, e.Name)));
+
+            return items;
+        }
+        catch (OperationCanceledException)
+        {
+            // Korisnik je nastavio tipkati prije nego je prethodni zahtjev zavrsio -
+            // MudAutocomplete otkazuje prijasnji poziv, ovo NIJE stvarna greska.
+            return Array.Empty<SearchResultItem>();
+        }
+        catch (Exception)
+        {
+            return Array.Empty<SearchResultItem>();
+        }
+    }
+
+    private void OnSearchResultSelected(SearchResultItem? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        var url = item.Category switch
+        {
+            "FaultReport" => $"/fault-reports/{item.Id}",
+            "Location" => "/locations",
+            "Employee" => "/employees",
+            _ => (string?)null
+        };
+
+        if (url is not null)
+        {
+            NavigationManager.NavigateTo(url);
+        }
     }
 
     private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)

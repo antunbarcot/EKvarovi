@@ -14,7 +14,7 @@
 
 @if (_isLoading)
 {
-    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    <TableSkeleton />
 }
 else if (!_hasAccess)
 {
@@ -35,7 +35,7 @@ else
     }
     else if (_reports.Count == 0)
     {
-        <MudAlert Severity="Severity.Info">Nemate prijavljenih kvarova.</MudAlert>
+        <EmptyState Icon="@Icons.Material.Filled.AssignmentTurnedIn" Message="Nemate prijavljenih kvarova." />
     }
     else
     {
@@ -165,7 +165,7 @@ else
         "Dodijeljeno" => Color.Info,
         "U radu" => Color.Warning,
         "Riješeno" => Color.Success,
-        "Zatvoreno" => Color.Dark,
+        "Zatvoreno" => Color.Secondary,
         _ => Color.Default
     };
 }

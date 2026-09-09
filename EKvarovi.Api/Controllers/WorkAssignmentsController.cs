@@ -193,6 +193,87 @@ public class WorkAssignmentsController : ControllerBase
         return CreatedAtAction(nameof(GetWorkAssignment), new { id = workAssignment.Id }, createdDto);
     }
 
+    // Bulk PRVA dodjela - namjerno ne radi reassign. Prijave koje vec imaju aktivnu
+    // dodjelu se PRESKACU (za to postoji zaseban tok: POST {faultReportId}/reassign),
+    // isto kao nepostojece prijave - jedna losa stavka ne smije prekinuti cijelu akciju.
+    [HttpPost("bulk")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<ActionResult<BulkAssignResultDto>> BulkAssign(BulkAssignDto dto)
+    {
+        var technician = await _context.Employees.FirstOrDefaultAsync(e => e.Id == dto.TechnicianId);
+        if (technician is null || !technician.IsTechnician)
+        {
+            return BadRequest("Odabrani zaposlenik ne postoji ili nema ulogu Izvršitelj.");
+        }
+
+        var dodijeljenoStatus = await _context.FaultStatuses.FirstOrDefaultAsync(s => s.Name == StatusDodijeljeno);
+        if (dodijeljenoStatus is null)
+        {
+            return BadRequest($"Status \"{StatusDodijeljeno}\" nije pronađen u šifrarniku statusa.");
+        }
+
+        var requestedIds = dto.FaultReportIds.Distinct().ToList();
+
+        var faultReports = await _context.FaultReports
+            .Include(fr => fr.FaultStatus)
+            .Where(fr => requestedIds.Contains(fr.Id))
+            .ToListAsync();
+
+        var alreadyAssignedIds = (await _context.WorkAssignments
+            .Where(wa => requestedIds.Contains(wa.FaultReportId) && wa.IsActive)
+            .Select(wa => wa.FaultReportId)
+            .ToListAsync())
+            .ToHashSet();
+
+        var now = DateTime.UtcNow;
+        var appUserId = User.GetAppUserId();
+        var result = new BulkAssignResultDto();
+
+        foreach (var faultReportId in requestedIds)
+        {
+            var faultReport = faultReports.FirstOrDefault(fr => fr.Id == faultReportId);
+            if (faultReport is null)
+            {
+                result.Skipped.Add(new BulkAssignSkippedDto { FaultReportId = faultReportId, Reason = "Prijava ne postoji." });
+                continue;
+            }
+
+            if (alreadyAssignedIds.Contains(faultReportId))
+            {
+                result.Skipped.Add(new BulkAssignSkippedDto { FaultReportId = faultReportId, Reason = "Prijava već ima aktivnu dodjelu." });
+                continue;
+            }
+
+            var previousStatusName = faultReport.FaultStatus?.Name;
+
+            _context.WorkAssignments.Add(new WorkAssignment
+            {
+                FaultReportId = faultReportId,
+                TechnicianId = dto.TechnicianId,
+                AssignedAt = now,
+                AssignedByAppUserId = SystemAppUserId,
+                UnassignedAt = null,
+                IsActive = true,
+                ReassignmentNote = null
+            });
+
+            faultReport.FaultStatusId = dodijeljenoStatus.Id;
+            faultReport.UpdatedAt = now;
+
+            _context.FaultReportHistoryEvents.AddRange(
+                FaultReportHistoryEvents.Create(
+                    faultReportId, HistoryEventAssigned, null, $"{technician.FirstName} {technician.LastName}", appUserId, now),
+                FaultReportHistoryEvents.Create(
+                    faultReportId, HistoryEventStatusChanged, previousStatusName, dodijeljenoStatus.Name, appUserId, now));
+
+            result.SuccessCount++;
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(result);
+    }
+
     [HttpPost("{faultReportId:int}/reassign")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<WorkAssignmentDto>> ReassignWorkAssignment(int faultReportId, ReassignWorkAssignmentDto dto)

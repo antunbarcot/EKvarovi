@@ -7,6 +7,8 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager NavigationManager
+@inject CurrentUserService CurrentUserService
+@inject IJSRuntime JS
 
 <PageTitle>Prijave kvarova</PageTitle>
 
@@ -60,6 +62,17 @@
             <MudButton Variant="Variant.Outlined" OnClick="ResetFiltersAsync">
                 Reset
             </MudButton>
+            @if (CurrentUserService.IsInRole("Admin") || CurrentUserService.IsInRole("Manager"))
+            {
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download"
+                           Disabled="_isExporting" OnClick='@(() => DownloadExportAsync("csv"))'>
+                    Preuzmi CSV
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.PictureAsPdf"
+                           Disabled="_isExporting" OnClick='@(() => DownloadExportAsync("pdf"))'>
+                    Preuzmi PDF
+                </MudButton>
+            }
         </MudItem>
     </MudGrid>
 </MudPaper>
@@ -69,7 +82,19 @@
     <MudAlert Severity="Severity.Error" Class="mb-4">@_errorMessage</MudAlert>
 }
 
+@if (_selectedItems.Count > 0 && (CurrentUserService.IsInRole("Admin") || CurrentUserService.IsInRole("Manager")))
+{
+    <MudPaper Class="pa-3 mb-4 d-flex align-center justify-space-between flex-wrap ga-2" Elevation="2">
+        <MudText Typo="Typo.body1">Odabrano prijava: @_selectedItems.Count</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd"
+                   OnClick="OpenBulkAssignDialogAsync">
+            Dodijeli odabrane (@_selectedItems.Count) izvršitelju
+        </MudButton>
+    </MudPaper>
+}
+
 <MudTable T="FaultReportDto" ServerData="ServerReloadAsync" @ref="_table" Hover="true" Striped="true"
+          MultiSelection="true" @bind-SelectedItems="_selectedItems"
           OnRowClick="@((TableRowClickEventArgs<FaultReportDto> args) => NavigationManager.NavigateTo($"/fault-reports/{args.Item.Id}"))" RowStyle="cursor: pointer;">
     <HeaderContent>
         <MudTh>Opis</MudTh>
@@ -130,10 +155,10 @@
         </MudTd>
     </RowTemplate>
     <NoRecordsContent>
-        <MudAlert Severity="Severity.Info">Nema prijava za zadane filtere.</MudAlert>
+        <EmptyState Icon="@Icons.Material.Filled.Inbox" Message="Nema prijava za zadane filtere." />
     </NoRecordsContent>
     <LoadingContent>
-        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        <TableSkeleton />
     </LoadingContent>
 </MudTable>
 
@@ -150,8 +175,11 @@
     private List<LookupDto> _faultPriorities = new();
     private List<LookupDto> _faultTypes = new();
     private List<LookupDto> _reporters = new();
+    private List<LookupDto> _technicians = new();
+    private HashSet<FaultReportDto> _selectedItems = new();
 
     private bool _isLoading;
+    private bool _isExporting;
     private string? _errorMessage;
 
     private string? _search;
@@ -175,13 +203,15 @@
             var prioritiesTask = Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/fault-priorities");
             var typesTask = Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/fault-types");
             var reportersTask = Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/reporters");
-            await Task.WhenAll(locationsTask, statusesTask, prioritiesTask, typesTask, reportersTask);
+            var techniciansTask = Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/technicians");
+            await Task.WhenAll(locationsTask, statusesTask, prioritiesTask, typesTask, reportersTask, techniciansTask);
 
             _locations = locationsTask.Result ?? new();
             _faultStatuses = statusesTask.Result ?? new();
             _faultPriorities = prioritiesTask.Result ?? new();
             _faultTypes = typesTask.Result ?? new();
             _reporters = reportersTask.Result ?? new();
+            _technicians = techniciansTask.Result ?? new();
         }
         catch (Exception ex)
         {
@@ -271,6 +301,45 @@
         await _table.ReloadServerData();
     }
 
+    // HttpClient u Blazor Serveru poziva ide SA servera, ne iz preglednika - obicna
+    // navigacija/anchor na API URL ne bi ponijela JWT (auth handler ga dodaje samo
+    // ovom HttpClient-u), a puko "GetAsync" u C#-u sam po sebi ne pokrece download
+    // u pregledniku korisnika. Zato: server dohvati bajtove kroz vec auth-ozicani
+    // Http, pretvori u base64 i preda ih JS-u (wwwroot/js/fileDownload.js) koji
+    // tek gradi Blob + privremeni <a download> - to je dio koji preglednik stvarno
+    // pokrene kao "spremi datoteku".
+    private async Task DownloadExportAsync(string format)
+    {
+        _isExporting = true;
+
+        try
+        {
+            var query = BuildQueryString(sortLabel: null, sortDescending: false);
+            var response = await Http.GetAsync($"api/fault-reports/export/{format}{query}");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Greška prilikom izvoza.", Severity.Error);
+                return;
+            }
+
+            var bytes = await response.Content.ReadAsByteArrayAsync();
+            var base64 = Convert.ToBase64String(bytes);
+            var contentType = format == "csv" ? "text/csv" : "application/pdf";
+            var fileName = $"fault-reports-export.{format}";
+
+            await JS.InvokeVoidAsync("downloadFileFromBytes", fileName, contentType, base64);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Greška prilikom izvoza: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isExporting = false;
+        }
+    }
+
     private async Task OpenCreateDialogAsync()
     {
         var parameters = new DialogParameters<NewFaultReportDialog>
@@ -305,6 +374,29 @@
         if (result is { Canceled: false })
         {
             Snackbar.Add("Prijava je pregledana.", Severity.Success);
+            await _table.ReloadServerData();
+        }
+    }
+
+    private async Task OpenBulkAssignDialogAsync()
+    {
+        var parameters = new DialogParameters<BulkAssignDialog>
+        {
+            { x => x.FaultReportIds, _selectedItems.Select(fr => fr.Id).ToList() },
+            { x => x.Technicians, _technicians }
+        };
+
+        var dialog = await DialogService.ShowAsync<BulkAssignDialog>("Dodjela izvršitelju", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false } && result.Data is BulkAssignResultDto bulkResult)
+        {
+            var message = bulkResult.Skipped.Count == 0
+                ? $"Dodijeljeno prijava: {bulkResult.SuccessCount}."
+                : $"Dodijeljeno prijava: {bulkResult.SuccessCount}. Preskočeno: {bulkResult.Skipped.Count} (već ima aktivnu dodjelu ili ne postoji).";
+
+            Snackbar.Add(message, bulkResult.Skipped.Count == 0 ? Severity.Success : Severity.Warning);
+            _selectedItems.Clear();
             await _table.ReloadServerData();
         }
     }
@@ -372,7 +464,7 @@
         "Dodijeljeno" => Color.Info,
         "U radu" => Color.Warning,
         "Riješeno" => Color.Success,
-        "Zatvoreno" => Color.Dark,
+        "Zatvoreno" => Color.Secondary,
         _ => Color.Default
     };
 }

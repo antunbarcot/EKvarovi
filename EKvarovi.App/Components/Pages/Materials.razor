@@ -23,13 +23,13 @@
 
 @if (_isLoading)
 {
-    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    <TableSkeleton />
 }
 else if (_errorMessage is null)
 {
     if (_materials.Count == 0)
     {
-        <MudAlert Severity="Severity.Info">Nema unesenih materijala.</MudAlert>
+        <EmptyState Icon="@Icons.Material.Filled.Inventory2" Message="Nema unesenih materijala." />
     }
     else
     {

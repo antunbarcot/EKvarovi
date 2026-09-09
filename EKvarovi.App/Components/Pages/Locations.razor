@@ -23,13 +23,13 @@
 
 @if (_isLoading)
 {
-    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    <TableSkeleton />
 }
 else if (_errorMessage is null)
 {
     if (_locations.Count == 0)
     {
-        <MudAlert Severity="Severity.Info">Nema unesenih lokacija.</MudAlert>
+        <EmptyState Icon="@Icons.Material.Filled.LocationOn" Message="Nema unesenih lokacija." />
     }
     else
     {

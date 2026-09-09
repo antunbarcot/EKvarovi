@@ -87,10 +87,10 @@
         <MudTd DataLabel="Trajanje">@(context.DurationMinutes.HasValue ? $"{context.DurationMinutes} min" : "-")</MudTd>
     </RowTemplate>
     <NoRecordsContent>
-        <MudAlert Severity="Severity.Info">Nema intervencija za zadane filtere.</MudAlert>
+        <EmptyState Icon="@Icons.Material.Filled.Build" Message="Nema intervencija za zadane filtere." />
     </NoRecordsContent>
     <LoadingContent>
-        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        <TableSkeleton />
     </LoadingContent>
 </MudTable>
 

@@ -26,7 +26,7 @@ else if (_errorMessage is not null)
 }
 else if (_assignments.Count == 0)
 {
-    <MudAlert Severity="Severity.Info">Nemate trenutno aktivnih naloga.</MudAlert>
+    <EmptyState Icon="@Icons.Material.Filled.Engineering" Message="Nemate trenutno aktivnih naloga." />
 }
 else
 {

@@ -58,3 +58,34 @@ h1:focus {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+
+/* Globalna pretraga sjedi na MudAppBar-u koji ima Color="Color.Primary". MudBlazor-ov
+   "Filled" input crta tekst/placeholder s "color: currentColor" (nasljedjuje boju od
+   okoline) preko tamne (rgba(0,0,0,.09)) pozadine - u svijetloj temi je Primary tamnoplav
+   (#1E3A5F) pa ispadne tamno na tamnom (necitljivo), u tamnoj temi je Primary svjetliji
+   (#4C7CA8) pa isti tekst slucajno ispadne citljiv - otud razlika izmedju tema. Rjesenje:
+   polje dobiva vlastitu, uvijek svijetlu "staklenu" pozadinu i fiksnu bijelu boju
+   teksta/ikone/placeholdera, neovisno o temi. MudBlazor.min.css se ucitava nakon
+   app.css i njegovi selektori imaju istu specificnost kao ovi ovdje (dvije klase), pa
+   bez !important pobjedjuje po redoslijedu ucitavanja. */
+.global-search-field .mud-input-filled {
+    background-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+.global-search-field .mud-input-filled:hover {
+    background-color: rgba(255, 255, 255, 0.22) !important;
+}
+
+.global-search-field,
+.global-search-field .mud-input-root {
+    color: #FFFFFF !important;
+}
+
+.global-search-field .mud-input-root::placeholder {
+    color: #FFFFFF !important;
+    opacity: 0.75 !important;
+}
+
+.global-search-field .mud-icon-root {
+    color: rgba(255, 255, 255, 0.85) !important;
+}

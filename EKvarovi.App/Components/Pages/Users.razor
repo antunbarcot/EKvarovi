@@ -14,7 +14,7 @@
 
 @if (_isLoading)
 {
-    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    <TableSkeleton />
 }
 else if (!_hasAccess)
 {
@@ -35,7 +35,7 @@ else
     }
     else if (_users.Count == 0)
     {
-        <MudAlert Severity="Severity.Info">Nema unesenih korisnika.</MudAlert>
+        <EmptyState Icon="@Icons.Material.Filled.ManageAccounts" Message="Nema unesenih korisnika." />
     }
     else
     {

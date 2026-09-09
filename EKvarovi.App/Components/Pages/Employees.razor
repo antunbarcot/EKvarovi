@@ -23,13 +23,13 @@
 
 @if (_isLoading)
 {
-    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    <TableSkeleton />
 }
 else if (_errorMessage is null)
 {
     if (_employees.Count == 0)
     {
-        <MudAlert Severity="Severity.Info">Nema unesenih zaposlenika.</MudAlert>
+        <EmptyState Icon="@Icons.Material.Filled.People" Message="Nema unesenih zaposlenika." />
     }
     else
     {

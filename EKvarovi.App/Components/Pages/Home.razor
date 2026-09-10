@@ -1,5 +1,5 @@
 @page "/"
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using System.Net.Http.Json
 @using EKvarovi.Shared.DTOs
 @inject HttpClient Http
@@ -363,6 +363,7 @@ else
         new("Bez izvršitelja", d.UnassignedFaultReportsCount.ToString(), Icons.Material.Filled.PersonOff,
             d.UnassignedFaultReportsCount > 0 ? Color.Warning : Color.Primary),
         new("Aktivne intervencije", d.ActiveInterventionsCount.ToString(), Icons.Material.Filled.Build, Color.Tertiary),
+        new("Rok uskoro ističe", d.UpcomingDueFaultReportsCount.ToString(), Icons.Material.Filled.AccessTime, Color.Warning),
         new("Prosječno vrijeme rješavanja", FormatHours(d.AverageResolutionTimeHours), Icons.Material.Filled.Timer, Color.Dark)
     };
 

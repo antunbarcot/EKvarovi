@@ -88,6 +88,28 @@ public class LookupsController : ControllerBase
         return Ok(technicians);
     }
 
+    // Dodatni endpoint uz GET technicians - vraca isti skup izvrsitelja ALI s brojem
+    // trenutno aktivnih naloga po svakom, da UI kod dodjele odmah pokaze opterecenje bez
+    // dodatnog poziva po izvrsitelju. Count ide kroz korelirani SQL upit (e.WorkAssignments
+    // .Count(...) unutar .Select() projekcije), ne kao C# petlja nad vec ucitanom listom.
+    [HttpGet("technicians-with-workload")]
+    public async Task<ActionResult<List<TechnicianWorkloadDto>>> GetTechniciansWithWorkload()
+    {
+        var technicians = await _context.Employees
+            .Where(e => e.IsActive && e.IsTechnician)
+            .OrderBy(e => e.LastName)
+            .ThenBy(e => e.FirstName)
+            .Select(e => new TechnicianWorkloadDto
+            {
+                Id = e.Id,
+                Name = e.FirstName + " " + e.LastName,
+                ActiveAssignmentsCount = e.WorkAssignments.Count(wa => wa.IsActive)
+            })
+            .ToListAsync();
+
+        return Ok(technicians);
+    }
+
     [HttpGet("reporters")]
     public async Task<ActionResult<List<LookupDto>>> GetReporters()
     {

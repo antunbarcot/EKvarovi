@@ -1,5 +1,5 @@
 @page "/fault-reports/{Id:int}"
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using System.Net.Http.Headers
 @using System.Net.Http.Json
 @using EKvarovi.App.Components.Dialogs
@@ -416,7 +416,7 @@ else
 
     private FaultReportDto? _faultReport;
     private List<WorkAssignmentDto> _assignments = new();
-    private List<LookupDto> _technicians = new();
+    private List<TechnicianWorkloadDto> _technicians = new();
     private List<InterventionDto> _interventions = new();
     private List<MaterialDto> _materials = new();
     private List<AttachmentDto> _attachments = new();
@@ -523,7 +523,7 @@ else
     {
         try
         {
-            _technicians = await Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/technicians") ?? new();
+            _technicians = await Http.GetFromJsonAsync<List<TechnicianWorkloadDto>>("api/lookups/technicians-with-workload") ?? new();
         }
         catch (Exception ex)
         {

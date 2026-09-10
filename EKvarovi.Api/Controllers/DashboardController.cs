@@ -49,6 +49,10 @@ public class DashboardController : ControllerBase
             .CountAsync(fr => fr.DueDate != null && fr.DueDate < now
                 && fr.FaultStatus!.Name != StatusZatvoreno && fr.FaultStatus!.Name != StatusRijeseno);
 
+        var upcomingDueCount = await _context.FaultReports
+            .CountAsync(fr => fr.DueDate != null && fr.DueDate >= now && fr.DueDate <= now.AddHours(24)
+                && fr.FaultStatus!.Name != StatusZatvoreno && fr.FaultStatus!.Name != StatusRijeseno);
+
         // "Pregledano ili dalje" = SortOrder usporedba (ne popis imena) - tako obuhvaca i
         // rubni slucaj gdje bi prijava vec dalje u toku (npr. Dodijeljeno) ostala bez
         // ikakve aktivne dodjele (npr. nakon rucnog uklanjanja u bazi).
@@ -96,6 +100,7 @@ public class DashboardController : ControllerBase
             OpenFaultReportsCount = openCount,
             CriticalFaultReportsCount = criticalCount,
             OverdueFaultReportsCount = overdueCount,
+            UpcomingDueFaultReportsCount = upcomingDueCount,
             UnassignedFaultReportsCount = unassignedCount,
             ActiveInterventionsCount = activeInterventionsCount,
             AverageResolutionTimeHours = averageResolutionTimeHours,

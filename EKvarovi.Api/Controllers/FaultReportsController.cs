@@ -115,6 +115,28 @@ public class FaultReportsController : ControllerBase
             query = query.Where(fr => fr.CreatedAt <= parameters.DateTo.Value);
         }
 
+        if (parameters.DueSoon == true)
+        {
+            var now = DateTime.UtcNow;
+            query = query.Where(fr => fr.DueDate != null && fr.DueDate >= now && fr.DueDate <= now.AddHours(24)
+                && fr.FaultStatus!.Name != StatusZatvoreno && fr.FaultStatus!.Name != StatusRijeseno);
+        }
+
+        if (parameters.UnassignedOnly == true)
+        {
+            // "Pregledano ili dalje" = SortOrder usporedba, isti princip kao
+            // DashboardController.UnassignedFaultReportsCount. Podupit za SortOrder ostaje
+            // UNUTAR .Where() lambde (ne izvuci u zaseban await prije) - BuildFilteredQuery
+            // je namjerno sinkrona (dijele je GetFaultReports/ExportCsv/ExportPdf) i samo
+            // slaze IQueryable, ne izvrsava upite - EF Core cijeli izraz prevodi u JEDAN SQL
+            // upit sa skalarnim subqueryjem tek kad pozivatelj napravi ToListAsync().
+            query = query.Where(fr => fr.FaultStatus!.SortOrder >= _context.FaultStatuses
+                    .Where(s => s.Name == StatusPregledano)
+                    .Select(s => s.SortOrder)
+                    .FirstOrDefault()
+                && !fr.WorkAssignments.Any(wa => wa.IsActive));
+        }
+
         return ApplySorting(query, parameters.SortBy, parameters.SortDescending);
     }
 

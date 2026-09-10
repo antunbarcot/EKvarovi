@@ -2,6 +2,12 @@ html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
+/* Sigurnosna mjera uz MudTheme.Typography (AppTheme.cs) - pokriva obicne HTML elemente
+   izvan MudBlazor komponenti koje MudTheme Typography ne dotice. */
+body {
+    font-family: 'Public Sans', sans-serif !important;
+}
+
 a, .btn-link {
     color: #006bb7;
 }
@@ -88,4 +94,24 @@ h1:focus {
 
 .global-search-field .mud-icon-root {
     color: rgba(255, 255, 255, 0.85) !important;
+}
+
+/* MudButton StartIcon (small, outlined) je flex-centriran u odnosu na CIJELU ikonu-kutiju
+   (18px), ali stvarni obrisi teksta pored nje (izmjereno preko Range.getBoundingClientRect
+   nad text nodeom, ne cijeli redak koji ukljucuje visak od line-height) su niski svega ~15px -
+   ikona zato ispadne vizualno malo ispod razine rijeci. Mali pomak nagore (izmjeren precizno
+   u browseru: bez pomaka je ikona ~0.9px niza od teksta, -1px daje odstupanje ~0.1px) to
+   ispravlja. Skupljeno na .quick-filter-btn (brzi filteri na FaultReports.razor) da ne utjece
+   na ostale male outlined gumbe s ikonom u aplikaciji. */
+.quick-filter-btn .mud-button-icon-start svg {
+    transform: translateY(-1px);
+}
+
+/* Isti opticki razmak (glyph vs. line-height box) kao gore, ovaj put za AccessTime
+   ikonu pored datuma u "Rok" stupcu FaultReports.razor tablice (chip/tooltip ikona
+   ugnijezdena unutar MudTooltip omotaca, ne izravan MudButton StartIcon). Izmjereno
+   preko Range.getBoundingClientRect nad text nodeom datuma: bez pomaka je ikona ~0.7px
+   niza, -1px daje odstupanje ~0.3px (najbolje od testiranih vrijednosti). */
+.due-soon-icon svg {
+    transform: translateY(-1px);
 }

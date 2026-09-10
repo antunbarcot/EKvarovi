@@ -1,5 +1,5 @@
 @page "/materials"
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using System.Net.Http.Json
 @using EKvarovi.App.Components.Dialogs
 @using EKvarovi.Shared.DTOs

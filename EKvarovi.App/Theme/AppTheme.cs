@@ -49,5 +49,24 @@ public class AppTheme : MudTheme
         {
             DefaultBorderRadius = "4px"
         };
+
+        // "Public Sans" (font vladinih/javnih digitalnih usluga, npr. USWDS) umjesto
+        // MudBlazor default Roboto - prikladnije za zupanijsku upravnu aplikaciju.
+        // Svaka Typography varijanta (H1-H6, Body1, Body2) u MudBlazoru ima SVOJ vlastiti
+        // FontFamily koji NE nasljeđuje Default ako nije eksplicitno postavljen - zato se
+        // font mora ponoviti na svakoj od njih pojedinacno, ne samo na Default.
+        var fontFamily = new[] { "Public Sans", "sans-serif" };
+        Typography = new Typography
+        {
+            Default = new DefaultTypography { FontFamily = fontFamily },
+            H1 = new H1Typography { FontFamily = fontFamily },
+            H2 = new H2Typography { FontFamily = fontFamily },
+            H3 = new H3Typography { FontFamily = fontFamily },
+            H4 = new H4Typography { FontFamily = fontFamily },
+            H5 = new H5Typography { FontFamily = fontFamily },
+            H6 = new H6Typography { FontFamily = fontFamily },
+            Body1 = new Body1Typography { FontFamily = fontFamily },
+            Body2 = new Body2Typography { FontFamily = fontFamily }
+        };
     }
 }

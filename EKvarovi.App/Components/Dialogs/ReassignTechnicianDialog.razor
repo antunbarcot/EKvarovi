@@ -9,7 +9,7 @@
                        RequiredError="Izvršitelj je obavezan">
                 @foreach (var technician in Technicians)
                 {
-                    <MudSelectItem T="int" Value="technician.Id">@technician.Name</MudSelectItem>
+                    <MudSelectItem T="int" Value="technician.Id">@FormatTechnicianLabel(technician)</MudSelectItem>
                 }
             </MudSelect>
             <MudTextField T="string" @bind-Value="_model.ReassignmentNote" Label="Razlog ponovne dodjele (opcionalno)"
@@ -33,7 +33,7 @@
     [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
 
     [Parameter] public int FaultReportId { get; set; }
-    [Parameter] public List<LookupDto> Technicians { get; set; } = new();
+    [Parameter] public List<TechnicianWorkloadDto> Technicians { get; set; } = new();
 
     private MudForm _form = null!;
     private ReassignWorkAssignmentDto _model = new();
@@ -101,4 +101,21 @@
     }
 
     private void Cancel() => MudDialog.Cancel();
+
+    // Hrvatska gramatika broja: 1 -> "aktivan nalog", 2-4 (osim x12-x14) -> "aktivna
+    // naloga", ostalo (i 0) -> "aktivnih naloga" (0 posebno kao "bez aktivnih naloga").
+    private static string FormatTechnicianLabel(TechnicianWorkloadDto technician)
+    {
+        var count = technician.ActiveAssignmentsCount;
+        var suffix = count switch
+        {
+            0 => "bez aktivnih naloga",
+            1 => "1 aktivan nalog",
+            _ when count % 100 is >= 12 and <= 14 => $"{count} aktivnih naloga",
+            _ when count % 10 is >= 2 and <= 4 => $"{count} aktivna naloga",
+            _ => $"{count} aktivnih naloga"
+        };
+
+        return $"{technician.Name} ({suffix})";
+    }
 }

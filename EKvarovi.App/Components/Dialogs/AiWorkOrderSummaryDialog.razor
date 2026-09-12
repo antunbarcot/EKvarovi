@@ -8,7 +8,9 @@
 
         @if (_isLoading)
         {
-            <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+            <div class="d-flex justify-center pa-4">
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+            </div>
         }
         else if (_errorMessage is not null)
         {

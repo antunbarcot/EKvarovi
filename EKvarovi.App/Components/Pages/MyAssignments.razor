@@ -12,7 +12,9 @@
 
 @if (_isLoading)
 {
-    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    <div class="d-flex justify-center align-center" style="min-height: 60vh;">
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    </div>
 }
 else if (!_hasAccess)
 {

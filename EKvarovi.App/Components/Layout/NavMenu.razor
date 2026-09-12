@@ -80,6 +80,9 @@
         <MudText Typo="Typo.body2">@(CurrentUserService.DisplayName ?? CurrentUserService.Email)</MudText>
         <MudText Typo="Typo.caption" Class="mud-text-secondary">@string.Join(", ", CurrentUserService.Roles)</MudText>
     </div>
+    <MudNavLink Href="/about" Icon="@Icons.Material.Filled.Info">
+        O aplikaciji
+    </MudNavLink>
     <MudNavLink OnClick="LogoutAsync" Icon="@Icons.Material.Filled.Logout">
         Odjava
     </MudNavLink>

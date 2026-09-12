@@ -47,13 +47,47 @@
     </MudAppBar>
 
     <MudDrawer @bind-Open="_drawerOpen" Elevation="1" Variant="DrawerVariant.Responsive" ClipMode="DrawerClipMode.Always">
-        <NavMenu />
+        <div class="drawer-content">
+            <BuildingsSilhouette Class="drawer-skyline" />
+            <div class="drawer-nav">
+                <NavMenu />
+            </div>
+        </div>
     </MudDrawer>
 
     <MudMainContent Class="pa-6 mt-16">
         @Body
     </MudMainContent>
 </MudLayout>
+
+<style>
+    /* Suptilan dekorativni sloj SAMO u MudDrawer-u (bocna navigacija) - isti skyline motiv
+       kao na Login.razor, ali josa blijedi jer je ovo aktivni radni prostor. MudMainContent
+       (gdje se prikazuju tablice/podaci) namjerno ostaje potpuno bez ove pozadine. */
+    .drawer-content {
+        position: relative;
+        height: 100%;
+    }
+
+    .drawer-skyline {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100%;
+        height: 30%;
+        min-height: 90px;
+        fill: var(--mud-palette-primary);
+        opacity: 0.05;
+        z-index: 0;
+        pointer-events: none;
+    }
+
+    .drawer-nav {
+        position: relative;
+        z-index: 1;
+    }
+</style>
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.

@@ -150,7 +150,7 @@
             </MudChip>
         </MudTd>
         <MudTd DataLabel="Status">
-            <MudChip T="string" Color="@StatusColor(context.FaultStatusName)" Size="Size.Small">
+            <MudChip T="string" Color="@FaultStatusColors.StatusColor(context.FaultStatusName)" Size="Size.Small">
                 @context.FaultStatusName
             </MudChip>
         </MudTd>
@@ -558,14 +558,4 @@
         _ => Color.Default
     };
 
-    private static Color StatusColor(string statusName) => statusName switch
-    {
-        "Zaprimljeno" => Color.Default,
-        "Pregledano" => Color.Info,
-        "Dodijeljeno" => Color.Info,
-        "U radu" => Color.Warning,
-        "Riješeno" => Color.Success,
-        "Zatvoreno" => Color.Secondary,
-        _ => Color.Default
-    };
 }

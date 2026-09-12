@@ -18,7 +18,9 @@
 
 @if (_isLoadingReport)
 {
-    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    <div class="d-flex justify-center align-center" style="min-height: 60vh;">
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    </div>
 }
 else if (_reportErrorMessage is not null)
 {
@@ -54,7 +56,7 @@ else
             <MudItem xs="12" sm="6" md="3">
                 <MudText Typo="Typo.body2">
                     <strong>Status:</strong>
-                    <MudChip T="string" Color="@StatusColor(_faultReport.FaultStatusName)" Size="Size.Small">@_faultReport.FaultStatusName</MudChip>
+                    <MudChip T="string" Color="@FaultStatusColors.StatusColor(_faultReport.FaultStatusName)" Size="Size.Small">@_faultReport.FaultStatusName</MudChip>
                 </MudText>
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
@@ -83,7 +85,9 @@ else
 
     @if (_isLoadingHistory)
     {
-        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        <div class="d-flex justify-center pa-4">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        </div>
     }
     else if (_historyErrorMessage is not null)
     {
@@ -98,7 +102,7 @@ else
         <MudTimeline TimelinePosition="TimelinePosition.Right" Class="mb-6">
             @foreach (var historyEvent in _history)
             {
-                <MudTimelineItem Color="@HistoryEventColor(historyEvent.EventType)" Icon="@HistoryEventIcon(historyEvent.EventType)">
+                <MudTimelineItem Color="@HistoryEventColor(historyEvent)" Icon="@HistoryEventIcon(historyEvent.EventType)">
                     <ItemContent>
                         <MudText Typo="Typo.body1">@HistoryEventDescription(historyEvent)</MudText>
                         <MudText Typo="Typo.caption" Class="mud-text-secondary">
@@ -132,7 +136,9 @@ else
 
     @if (_isLoadingAssignments)
     {
-        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        <div class="d-flex justify-center pa-4">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        </div>
     }
     else if (_assignmentsErrorMessage is not null)
     {
@@ -161,6 +167,17 @@ else
                                                OnClick="@(() => ShowAiSummaryAsync(assignment.Id))" />
                             </MudTooltip>
                         }
+                        @* Obican <a target="_blank"> namjerno umjesto MudButton+NavigationManager - Blazor Server
+                           SignalR navigacija unutar istog kruga ne otvara novi tab, obican link otvara. rel="opener"
+                           je OBAVEZAN ovdje - Chrome inace na target="_blank" tiho primjenjuje noopener izolaciju,
+                           sto prekida nasljedivanje sessionStorage u novi tab (login token bi izgledao "izgubljen"
+                           u printu iako je korisnik prijavljen, jer CurrentUserService cita token iz sessionStorage). *@
+                        <MudTooltip Text="Ispiši radni nalog">
+                            <a href="@($"/work-assignments/{assignment.Id}/print")" target="_blank" rel="opener"
+                               class="d-flex align-center mud-text-primary" style="text-decoration: none;">
+                                <MudIcon Icon="@Icons.Material.Filled.Print" Size="Size.Small" Color="Color.Primary" />
+                            </a>
+                        </MudTooltip>
                     </MudStack>
                 </MudStack>
                 <MudText Typo="Typo.body2">Dodijeljeno: @assignment.AssignedAt.ToString("dd.MM.yyyy HH:mm")</MudText>
@@ -189,7 +206,9 @@ else
 
     @if (_isLoadingInterventions)
     {
-        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        <div class="d-flex justify-center pa-4">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        </div>
     }
     else if (_interventionsErrorMessage is not null)
     {
@@ -350,7 +369,9 @@ else
 
     @if (_isLoadingAttachments)
     {
-        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        <div class="d-flex justify-center pa-4">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        </div>
     }
     else if (_attachmentsErrorMessage is not null)
     {
@@ -495,9 +516,12 @@ else
         _ => Icons.Material.Filled.History
     };
 
-    private static Color HistoryEventColor(string eventType) => eventType switch
+    private static Color HistoryEventColor(FaultReportHistoryEventDto historyEvent) => historyEvent.EventType switch
     {
-        "StatusChanged" => Color.Primary,
+        // Boja ovog eventa prati NOVI status (NewValue) - isti helper kao MudChip status
+        // prikazi svugdje drugdje - tako niz vremenske crte vizualno prati progresiju statusa
+        // umjesto niza identicnih zastavica iste boje.
+        "StatusChanged" => FaultStatusColors.StatusColor(historyEvent.NewValue),
         "PriorityChanged" => Color.Warning,
         "TypeSet" => Color.Info,
         "Assigned" => Color.Success,
@@ -1059,14 +1083,4 @@ else
         _ => Color.Default
     };
 
-    private static Color StatusColor(string? statusName) => statusName switch
-    {
-        "Zaprimljeno" => Color.Default,
-        "Pregledano" => Color.Info,
-        "Dodijeljeno" => Color.Info,
-        "U radu" => Color.Warning,
-        "Riješeno" => Color.Success,
-        "Zatvoreno" => Color.Secondary,
-        _ => Color.Default
-    };
 }

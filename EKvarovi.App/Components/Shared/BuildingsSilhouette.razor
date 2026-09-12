@@ -1,0 +1,35 @@
+@* Suptilna dekorativna SVG silueta zgrada (skyline motiv) - zajednicki element koji dijele
+   Login pozadina i MudDrawer pozadina (MainLayout), kako se isti markup ne bi duplicirao.
+   Namjerno NE definira poziciju/boju/providnost - svaki pozivatelj to postavlja preko
+   vlastite CSS klase jer se kontekst (velicina, opacity) razlikuje po stranici. *@
+<svg class="@Class" viewBox="0 0 1200 220" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+    <rect x="0" y="150" width="70" height="70" />
+    <rect x="70" y="120" width="55" height="100" />
+    <rect x="125" y="170" width="40" height="50" />
+    <rect x="180" y="60" width="130" height="160" />
+    <rect x="215" y="30" width="10" height="30" />
+    <rect x="235" y="30" width="10" height="30" />
+    <rect x="255" y="30" width="10" height="30" />
+    <rect x="275" y="30" width="10" height="30" />
+    <rect x="325" y="140" width="60" height="80" />
+    <rect x="390" y="100" width="45" height="120" />
+    <rect x="440" y="160" width="80" height="60" />
+    <rect x="535" y="80" width="90" height="140" />
+    <rect x="560" y="50" width="40" height="30" />
+    <rect x="640" y="130" width="50" height="90" />
+    <rect x="695" y="155" width="65" height="65" />
+    <rect x="775" y="60" width="130" height="160" />
+    <rect x="810" y="30" width="10" height="30" />
+    <rect x="830" y="30" width="10" height="30" />
+    <rect x="850" y="30" width="10" height="30" />
+    <rect x="870" y="30" width="10" height="30" />
+    <rect x="920" y="145" width="55" height="75" />
+    <rect x="980" y="100" width="45" height="120" />
+    <rect x="1035" y="165" width="75" height="55" />
+    <rect x="1120" y="120" width="60" height="100" />
+</svg>
+
+@code {
+    [Parameter]
+    public string Class { get; set; } = string.Empty;
+}

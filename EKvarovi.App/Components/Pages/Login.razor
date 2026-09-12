@@ -8,31 +8,85 @@
 
 <PageTitle>Prijava</PageTitle>
 
-<MudPaper Class="pa-8 mx-auto mt-8" MaxWidth="420px" Elevation="2">
-    <MudText Typo="Typo.h5" Class="mb-4">Prijava</MudText>
+<div class="login-page">
+    <BuildingsSilhouette Class="login-skyline" />
 
-    @if (_errorMessage is not null)
-    {
-        <MudAlert Severity="Severity.Error" Class="mb-4">@_errorMessage</MudAlert>
+    <MudPaper Class="pa-8 login-card" MaxWidth="420px" Elevation="3">
+        <div class="d-flex justify-center mb-2">
+            <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Color="Color.Primary" Style="font-size: 3.5rem;" />
+        </div>
+        <MudText Typo="Typo.h5" Class="mb-4 text-center">Prijava</MudText>
+
+        @if (_errorMessage is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4">@_errorMessage</MudAlert>
+        }
+
+        <MudForm @ref="_form" Model="_model">
+            <MudTextField T="string" Label="Email" @bind-Value="_model.Email" Required="true"
+                          RequiredError="Email je obavezan." Variant="Variant.Outlined" Class="mb-4 login-field" Disabled="_isSubmitting" />
+
+            <MudTextField T="string" Label="Lozinka" @bind-Value="_model.Password" InputType="InputType.Password"
+                          Required="true" RequiredError="Lozinka je obavezna." Variant="Variant.Outlined" Class="mb-4 login-field" Disabled="_isSubmitting" />
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                       OnClick="SubmitAsync" Disabled="_isSubmitting">
+                @if (_isSubmitting)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                Prijavi se
+            </MudButton>
+        </MudForm>
+    </MudPaper>
+</div>
+
+<style>
+    /* Login stranica je jedina koja "izlazi" iz standardnog pa-6/mt-16 okvira MudMainContent-a
+       (negativna margina ponisti pa-6) kako bi gradient/skyline pozadina popunila cijeli
+       dostupni prostor ispod AppBar-a (64px), a ne samo unutrasnji dio s marginama. */
+    .login-page {
+        position: relative;
+        min-height: calc(100vh - 64px);
+        margin: -24px;
+        padding: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        background: linear-gradient(135deg, var(--mud-palette-background) 0%, var(--mud-palette-background-gray) 100%);
     }
 
-    <MudForm @ref="_form" Model="_model">
-        <MudTextField T="string" Label="Email" @bind-Value="_model.Email" Required="true"
-                      RequiredError="Email je obavezan." Class="mb-4" Disabled="_isSubmitting" />
+    .login-skyline {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100%;
+        height: 45%;
+        min-height: 150px;
+        fill: var(--mud-palette-primary);
+        opacity: 0.07;
+        z-index: 0;
+        pointer-events: none;
+    }
 
-        <MudTextField T="string" Label="Lozinka" @bind-Value="_model.Password" InputType="InputType.Password"
-                      Required="true" RequiredError="Lozinka je obavezna." Class="mb-4" Disabled="_isSubmitting" />
+    .login-card {
+        position: relative;
+        z-index: 1;
+        width: 100%;
+    }
 
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
-                   OnClick="SubmitAsync" Disabled="_isSubmitting">
-            @if (_isSubmitting)
-            {
-                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-            }
-            Prijavi se
-        </MudButton>
-    </MudForm>
-</MudPaper>
+    .login-field .mud-input-outlined-border {
+        border-width: 1.5px;
+    }
+
+    .login-field .mud-input-slot,
+    .login-field .mud-input {
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+        border-radius: 4px;
+    }
+</style>
 
 @code {
     private MudForm _form = null!;

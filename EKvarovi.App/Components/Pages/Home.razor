@@ -8,9 +8,30 @@
 
 <PageTitle>Početna</PageTitle>
 
+<style>
+    /* Zadane MudChart oznake (12px/14px) su premalene za brzo ocitavanje na dashboardu -
+       povecano na dashboardu bez diranja MudBlazor teme drugdje u aplikaciji. */
+    .sla-chart-card .mud-chart-bar text,
+    .sla-chart-card .mud-chart-donut text {
+        font-size: 14px;
+    }
+
+    .sla-chart-card .mud-charts-xaxis,
+    .sla-chart-card .mud-charts-yaxis {
+        font-size: 16px;
+        font-weight: 600;
+    }
+
+    .sla-chart-card .mud-chart-legend-item {
+        font-size: 14px;
+    }
+</style>
+
 @if (!_isInitialized)
 {
-    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    <div class="d-flex justify-center align-center" style="min-height: 60vh;">
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    </div>
 }
 else if (!CurrentUserService.IsAuthenticated)
 {
@@ -28,7 +49,9 @@ else if (!CurrentUserService.IsAuthenticated)
 }
 else if (_isLoading)
 {
-    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    <div class="d-flex justify-center align-center" style="min-height: 60vh;">
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    </div>
 }
 else if (_errorMessage is not null)
 {
@@ -94,7 +117,9 @@ else if (_isFullDashboard)
 
     @if (_isLoadingSla)
     {
-        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        <div class="d-flex justify-center pa-4">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        </div>
     }
     else if (_slaErrorMessage is not null)
     {
@@ -153,8 +178,11 @@ else if (_isFullDashboard)
 
             @if (_locationChartSeries.Count > 0)
             {
-                <MudChart T="double" ChartType="ChartType.Bar" ChartSeries="_locationChartSeries" ChartLabels="_locationChartLabels"
-                          Width="100%" Height="300px" Class="mb-4" />
+                <MudPaper Class="pa-4 mb-4 sla-chart-card" Elevation="1">
+                    <MudText Typo="Typo.subtitle1" Class="mb-2">Prosječno vrijeme rješavanja po lokaciji (h)</MudText>
+                    <MudChart T="double" ChartType="ChartType.Bar" ChartSeries="_locationChartSeries" ChartLabels="_locationChartLabels"
+                              ChartOptions="_locationChartOptions" Width="100%" Height="340px" Class="sla-bar-chart" />
+                </MudPaper>
             }
         }
 
@@ -189,8 +217,25 @@ else if (_isFullDashboard)
 
             @if (_faultTypeChartSeries.Count > 0)
             {
-                <MudChart T="double" ChartType="ChartType.Bar" ChartSeries="_faultTypeChartSeries" ChartLabels="_faultTypeChartLabels"
-                          Width="100%" Height="300px" />
+                <MudPaper Class="pa-4 mb-4 sla-chart-card" Elevation="1">
+                    <MudText Typo="Typo.subtitle1" Class="mb-2">Distribucija prijava po tipu kvara</MudText>
+                    <div class="d-flex justify-center">
+                        <MudChart T="double" ChartType="ChartType.Donut" ChartSeries="_faultTypeChartSeries" ChartLabels="_faultTypeChartLabels"
+                                  ChartOptions="_faultTypeChartOptions" Width="300px" Height="300px" Class="sla-donut-chart" />
+                    </div>
+
+                    @* MudChart (v9.8) ShowValues ne iscrtava nista za Donut/Pie (provjereno u DOM-u -
+                       nema text elemenata unutar SVG-a), pa se brojevi po tipu kvara ispisuju rucno
+                       ispod grafa - i dalje bez potrebe za hoverom. *@
+                    <div class="d-flex flex-wrap justify-center ga-2 mt-3">
+                        @foreach (var ft in _sla.FaultTypeBreakdown)
+                        {
+                            <MudChip T="string" Size="Size.Medium" Color="Color.Default" Variant="Variant.Outlined">
+                                @ft.FaultTypeName: @ft.TotalReports (@FaultTypeSharePercentage(ft).ToString("0")%)
+                            </MudChip>
+                        }
+                    </div>
+                </MudPaper>
             }
         }
     }
@@ -247,6 +292,32 @@ else
     private List<ChartSeries<double>> _faultTypeChartSeries = new();
     private string[] _faultTypeChartLabels = Array.Empty<string>();
 
+    // Nijanse plave/sive izvedene iz AppTheme.cs (PaletteLight/PaletteDark Primary/Secondary) -
+    // grafovi na dashboardu tako vizualno pripadaju istoj teget temi kao ostatak aplikacije,
+    // umjesto MudBlazor default sarene palete.
+    private static readonly string[] ChartPalette =
+    {
+        "#1E3A5F", "#4C7CA8", "#2E527F", "#5C6B73", "#8A97A0", "#152A45", "#6C97BE", "#3A6386"
+    };
+
+    private readonly BarChartOptions _locationChartOptions = new()
+    {
+        ChartPalette = ChartPalette,
+        XAxisTitle = "Lokacija",
+        YAxisTitle = "Sati",
+        YAxisFormat = "0.0",
+        XAxisLabelRotation = -45,
+        BarWidthRatio = 0.65,
+        ShowValues = true
+    };
+
+    private readonly DonutChartOptions _faultTypeChartOptions = new()
+    {
+        ChartPalette = ChartPalette,
+        ShowLegend = true,
+        ShowValues = true
+    };
+
     protected override async Task OnInitializedAsync()
     {
         await CurrentUserService.EnsureInitializedAsync();
@@ -302,7 +373,7 @@ else
                 _faultTypeChartLabels = _sla.FaultTypeBreakdown.Select(ft => ft.FaultTypeName).ToArray();
                 _faultTypeChartSeries = new List<ChartSeries<double>>
                 {
-                    new() { Name = "Prosječno vrijeme (h)", Data = _sla.FaultTypeBreakdown.Select(ft => ft.AverageResolutionHours ?? 0).ToArray() }
+                    new() { Name = "Broj prijava", Data = _sla.FaultTypeBreakdown.Select(ft => (double)ft.TotalReports).ToArray() }
                 };
             }
         }
@@ -332,6 +403,12 @@ else
         }
 
         return hours.Value.ToString("0.0") + "h";
+    }
+
+    private double FaultTypeSharePercentage(FaultTypeSlaDto faultType)
+    {
+        var total = _sla?.FaultTypeBreakdown.Sum(ft => ft.TotalReports) ?? 0;
+        return total == 0 ? 0 : faultType.TotalReports * 100.0 / total;
     }
 
     private sealed record StatTile(string Label, string Value, string Icon, Color Color);

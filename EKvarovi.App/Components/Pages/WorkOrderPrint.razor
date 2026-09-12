@@ -1,0 +1,280 @@
+@page "/work-assignments/{Id:int}/print"
+@layout EKvarovi.App.Components.Layout.PrintLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Net.Http.Json
+@using EKvarovi.Shared.DTOs
+@inject HttpClient Http
+@inject CurrentUserService CurrentUserService
+@inject IJSRuntime JS
+
+<PageTitle>Radni nalog #@Id</PageTitle>
+
+<style>
+    /* Namjerno obican semanticki HTML (h1/h2/dl/table) umjesto MudTable/MudPaper - MudBlazor
+       komponente (Material shadow/elevation, JS-driven layout) se ne ispisuju uvijek cisto. */
+    .work-order-print {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 24px;
+        font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+        color: #1a1a1a;
+    }
+
+    .work-order-print header {
+        border-bottom: 2px solid #1E3A5F;
+        margin-bottom: 24px;
+        padding-bottom: 12px;
+    }
+
+    .work-order-print header p {
+        margin: 0;
+        color: #5C6B73;
+    }
+
+    .work-order-print h1 {
+        margin: 0 0 4px 0;
+        font-size: 1.4rem;
+        color: #1E3A5F;
+    }
+
+    .work-order-print h2 {
+        margin: 0;
+        font-size: 1.1rem;
+    }
+
+    .work-order-print section {
+        margin-bottom: 24px;
+    }
+
+    .work-order-print h3 {
+        font-size: 1rem;
+        border-bottom: 1px solid #ccc;
+        padding-bottom: 4px;
+        margin-bottom: 12px;
+    }
+
+    .work-order-print dl {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 6px 16px;
+        margin: 0;
+    }
+
+    .work-order-print dt {
+        font-weight: 600;
+        color: #5C6B73;
+    }
+
+    .work-order-print dd {
+        margin: 0;
+    }
+
+    .work-order-print table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+    }
+
+    .work-order-print th,
+    .work-order-print td {
+        text-align: left;
+        padding: 6px 8px;
+        border-bottom: 1px solid #ddd;
+        font-size: 0.9rem;
+    }
+
+    .work-order-print .intervention-card {
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 12px 16px;
+        margin-bottom: 12px;
+    }
+
+    .print-toolbar {
+        max-width: 800px;
+        margin: 0 auto 16px auto;
+        padding: 0 24px;
+    }
+
+    @@media print {
+        .no-print {
+            display: none;
+        }
+
+        .work-order-print {
+            max-width: none;
+            padding: 0;
+            font-size: 12pt;
+        }
+
+        @@page {
+            margin: 2cm;
+        }
+    }
+</style>
+
+@if (!_isInitialized || _isLoading)
+{
+    <div class="print-toolbar">
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    </div>
+}
+else if (_errorMessage is not null)
+{
+    <div class="print-toolbar">
+        <MudAlert Severity="Severity.Error">@_errorMessage</MudAlert>
+    </div>
+}
+else
+{
+    <div class="no-print print-toolbar">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Print" OnClick="PrintAsync">
+            Ispiši
+        </MudButton>
+    </div>
+
+    <div class="work-order-print">
+        <header>
+            <h1>e-Kvarovi Županije</h1>
+            <h2>Radni nalog #@_assignment!.Id</h2>
+            <p>Ispisano: @DateTime.Now.ToString("dd.MM.yyyy HH:mm")</p>
+        </header>
+
+        <section>
+            <h3>Podaci o prijavi</h3>
+            <dl>
+                <dt>Opis</dt>
+                <dd>@_faultReport?.Description</dd>
+                <dt>Lokacija</dt>
+                <dd>@_faultReport?.LocationName</dd>
+                <dt>Prijavitelj</dt>
+                <dd>@_faultReport?.ReporterName</dd>
+                <dt>Tip kvara</dt>
+                <dd>@_faultReport?.FaultTypeName</dd>
+                <dt>Prioritet</dt>
+                <dd>@_faultReport?.FaultPriorityName</dd>
+                <dt>Rok</dt>
+                <dd>@(_faultReport?.DueDate?.ToString("dd.MM.yyyy") ?? "-")</dd>
+            </dl>
+        </section>
+
+        <section>
+            <h3>Podaci o dodjeli</h3>
+            <dl>
+                <dt>Izvršitelj</dt>
+                <dd>@_assignment.TechnicianName</dd>
+                <dt>Dodijeljeno</dt>
+                <dd>@_assignment.AssignedAt.ToString("dd.MM.yyyy HH:mm")</dd>
+                @if (!string.IsNullOrWhiteSpace(_assignment.ReassignmentNote))
+                {
+                    <dt>Napomena</dt>
+                    <dd>@_assignment.ReassignmentNote</dd>
+                }
+            </dl>
+        </section>
+
+        <section>
+            <h3>Intervencije</h3>
+            @if (_interventions.Count == 0)
+            {
+                <p>Nema evidentiranih intervencija na ovoj dodjeli.</p>
+            }
+            else
+            {
+                @foreach (var intervention in _interventions.OrderBy(i => i.StartedAt))
+                {
+                    <div class="intervention-card">
+                        <dl>
+                            <dt>Status</dt>
+                            <dd>@intervention.InterventionStatusName</dd>
+                            <dt>Početak</dt>
+                            <dd>@(intervention.StartedAt?.ToString("dd.MM.yyyy HH:mm") ?? "-")</dd>
+                            <dt>Kraj</dt>
+                            <dd>@(intervention.EndedAt?.ToString("dd.MM.yyyy HH:mm") ?? "-")</dd>
+                            <dt>Bilješka</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(intervention.Notes) ? "-" : intervention.Notes)</dd>
+                        </dl>
+
+                        @if (intervention.Materials.Count > 0)
+                        {
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Materijal</th>
+                                        <th>Količina</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var material in intervention.Materials)
+                                    {
+                                        <tr>
+                                            <td>@material.MaterialName</td>
+                                            <td>@material.Quantity @material.MaterialUnitAbbreviation</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                    </div>
+                }
+            }
+        </section>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private bool _isInitialized;
+    private bool _isLoading = true;
+    private string? _errorMessage;
+    private WorkAssignmentDto? _assignment;
+    private FaultReportDto? _faultReport;
+    private List<InterventionDto> _interventions = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CurrentUserService.EnsureInitializedAsync();
+        _isInitialized = true;
+
+        if (!CurrentUserService.IsAuthenticated)
+        {
+            _errorMessage = "Niste prijavljeni - otvorite ovaj tab dok ste prijavljeni u aplikaciju.";
+            _isLoading = false;
+            return;
+        }
+
+        try
+        {
+            _assignment = await Http.GetFromJsonAsync<WorkAssignmentDto>($"api/work-assignments/{Id}");
+            if (_assignment is null)
+            {
+                _errorMessage = "Radni nalog nije pronađen.";
+                return;
+            }
+
+            _faultReport = await Http.GetFromJsonAsync<FaultReportDto>($"api/fault-reports/{_assignment.FaultReportId}");
+            _interventions = await Http.GetFromJsonAsync<List<InterventionDto>>($"api/interventions?workAssignmentId={Id}") ?? new();
+        }
+        catch (HttpRequestException ex)
+        {
+            _errorMessage = ex.StatusCode switch
+            {
+                System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden
+                    => "Nemate ovlasti za pregled ovog radnog naloga.",
+                System.Net.HttpStatusCode.NotFound => "Radni nalog nije pronađen.",
+                _ => $"Greška prilikom dohvaćanja podataka: {ex.Message}"
+            };
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task PrintAsync()
+    {
+        await JS.InvokeVoidAsync("print");
+    }
+}

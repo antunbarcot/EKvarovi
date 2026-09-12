@@ -37,10 +37,6 @@ public class SearchController : ControllerBase
         IQueryable<Shared.Models.FaultReport> faultReportsQuery = _context.FaultReports
             .Where(fr => fr.Description.Contains(trimmedQuery));
 
-        // Reporter smije vidjeti SAMO svoje prijave u rezultatima pretrage - isto pravilo
-        // kao GET api/fault-reports/mine, identitet ide iskljucivo iz JWT EmployeeId claima
-        // (ne iz nekog parametra koji bi klijent mogao izmijeniti). Locations i Employees
-        // ostaju vidljivi svim ulogama, kao i na njihovim redovnim GET endpointima.
         if (User.IsInRole("Reporter"))
         {
             var employeeId = User.GetEmployeeId();
@@ -49,8 +45,6 @@ public class SearchController : ControllerBase
                 : faultReportsQuery.Where(fr => false);
         }
 
-        // Truncate ide TEK nad vec ogranicenim (Take 5) rezultatom, u memoriji - EF Core
-        // ne zna prevesti proizvoljnu C# metodu (Truncate) u SQL unutar .Select() projekcije.
         var faultReportRows = await faultReportsQuery
             .OrderByDescending(fr => fr.CreatedAt)
             .Take(MaxResultsPerCategory)

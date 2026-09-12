@@ -76,9 +76,6 @@
 
     private static async Task<string> ReadErrorMessageAsync(HttpResponseMessage response)
     {
-        // API-jev BadRequest(string) stize kao goli "text/plain" (ne "application/json"),
-        // pa ReadFromJsonAsync<string>() ovdje puca ("'X' is an invalid start of a value").
-        // ReadAsStringAsync radi za oba slucaja - i za goli tekst i za JSON-citiran string.
         var raw = await response.Content.ReadAsStringAsync();
         if (string.IsNullOrWhiteSpace(raw))
         {
@@ -93,7 +90,6 @@
             }
             catch
             {
-                // padne na goli tekst ispod
             }
         }
 
@@ -102,8 +98,6 @@
 
     private void Cancel() => MudDialog.Cancel();
 
-    // Hrvatska gramatika broja: 1 -> "aktivan nalog", 2-4 (osim x12-x14) -> "aktivna
-    // naloga", ostalo (i 0) -> "aktivnih naloga" (0 posebno kao "bez aktivnih naloga").
     private static string FormatTechnicianLabel(TechnicianWorkloadDto technician)
     {
         var count = technician.ActiveAssignmentsCount;

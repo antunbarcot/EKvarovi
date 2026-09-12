@@ -18,8 +18,6 @@
 }
 else if (!_hasAccess)
 {
-    @* Prava zastita je vec [Authorize(Roles="Admin")] na UsersController-u - ovo je
-       samo UX zastita da korisnik bez uloge Admin ne gleda praznu/slomljenu stranicu. *@
     <MudAlert Severity="Severity.Warning">Nemate pristup ovoj stranici.</MudAlert>
 }
 else
@@ -91,8 +89,6 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        // Bez ovoga bi provjera uloge ispod mogla ispasti pogresna - CurrentUserService
-        // svoje stanje (Roles) ucitava asinkrono iz sessionStorage.
         await CurrentUserService.EnsureInitializedAsync();
         _hasAccess = CurrentUserService.IsInRole("Admin");
 

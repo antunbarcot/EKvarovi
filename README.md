@@ -1,66 +1,132 @@
 # e-Kvarovi Županije
 
-Aplikacija za prijavu i obradu kvarova u županijskim zgradama i lokacijama (upravne zgrade, škole, zdravstvene ustanove, skladišta). Prijavitelj prijavi kvar sa svoje lokacije, upravitelj ga pregleda i odredi vrstu/prioritet pa dodijeli izvršitelju, a izvršitelj onda odrađuje intervencije, evidentira utrošeni materijal i fotografije prije/poslije, sve do zatvaranja prijave.
+Aplikacija za prijavu i obradu kvarova u županijskim zgradama i lokacijama (upravne zgrade, škole, zdravstvene ustanove, skladišta). Prijavitelj prijavi kvar sa svoje lokacije, upravitelj ga pregleda i odredi vrstu/prioritet pa dodijeli izvršitelju, a izvršitelj odrađuje jednu ili više intervencija (uključujući neuspješne, koje ostaju u povijesti), evidentira utrošeni materijal i fotografije prije/poslije, sve do zatvaranja prijave.
 
 ## Tehnologije
 
-- .NET 10 (SDK 10.0.400)
+- .NET 10
 - Blazor Web App, Interactive Server render mode
 - MudBlazor 9.8.0
 - ASP.NET Core Web API
 - EF Core 10.0.11 + SQLite
-- JWT autentikacija (JwtBearer 10.0.10)
-- Swagger, samo u Development okruženju
+- JWT autentikacija (Microsoft.AspNetCore.Authentication.JwtBearer 10.0.10)
+- QuestPDF (generiranje PDF exporta)
+- Swashbuckle/Swagger, samo u Development okruženju
 
-## Struktura
+## Struktura projekta
 
 Solution ima tri projekta:
 
-- `EKvarovi.App` - Blazor frontend. Sve ide preko `HttpClient` + DTO-a, nema direktnog pristupa bazi.
-- `EKvarovi.Api` - Web API, EF Core, JWT, upload datoteka, poslovna logika.
-- `EKvarovi.Shared` - DTO-i i modeli koje dijele App i Api.
+- `EKvarovi.App` - Blazor Web App (frontend). Sva komunikacija ide preko `HttpClient` + DTO modela, nema direktnog pristupa bazi ni EF Core-u.
+- `EKvarovi.Api` - ASP.NET Core Web API - EF Core, JWT autentikacija i autorizacija, upload datoteka, sva poslovna logika.
+- `EKvarovi.Shared` - DTO modeli i zajednički tipovi koje dijele App i Api.
 
-Model baze je prije prve migracije nacrtan u `database-model.dbml` (dbdiagram.io format), u rootu solutiona - drži se usklađen sa stvarnim EF Core modelima.
+## Model baze
 
-## Pokretanje
+Model je namjerno projektiran oko povijesti umjesto brisanja - dodjele izvršitelja (`WorkAssignments`) i intervencije (`Interventions`) se nikad fizički ne brišu niti prepisuju, nego se svaka promjena bilježi kao novi red (uz `FaultReportHistoryEvents` kao dodatnu vremensku crtu). DTO modeli za prikaz i za spremanje su odvojeni od entity modela baze - Blazor nikad ne vidi entity klase izravno.
 
-### Preduvjeti
+![Dijagram baze podataka](docs/database-diagram.png)
 
-.NET SDK 10, Visual Studio s podrškom za .NET 10 (kod mene 18.9) ili `dotnet` CLI.
+Puni DBML izvor dijagrama nalazi se u `docs/database-model.dbml` - može se uvesti na [dbdiagram.io](https://dbdiagram.io) radi pregleda ili ponovnog izvoza slike, i drži se usklađen sa stvarnim EF Core modelima.
 
-### JWT tajni ključ
+## Pokretanje projekta - detaljan vodič korak po korak
 
-Prije prvog pokretanja ovo je obavezno - API neće ni upaliti ako `Jwt:Key` nije postavljen, `Program.cs` odmah baci exception. `appsettings.json` namjerno ima prazan `Issuer`/`Audience` i nema `Key` uopće, sve ide kroz user secrets:
+### 1. Preduvjeti
+
+- .NET 10 SDK (oba projekta ciljaju `net10.0`, nema `global.json` koji bi fiksirao točniju verziju).
+- Visual Studio s podrškom za .NET 10 SDK - preporučeno, ali nije obavezno.
+- Alternativa bez Visual Studija: `dotnet` CLI (`dotnet build`, `dotnet run`) radi jednako dobro za sve korake u ovom vodiču.
+
+### 2. Kloniranje repozitorija
+
+```
+git clone <URL-repozitorija>
+```
+
+Otvoriti `EKvarovi.sln` u Visual Studiju, ili samo raditi iz root foldera repozitorija ako se koristi CLI.
+
+### 3. JWT tajni ključ (obavezno prije prvog pokretanja)
+
+API se namjerno neće pokrenuti (fail-fast) dok `Jwt:Key` nije postavljen - u `EKvarovi.Api/Program.cs` se odmah kod starta baca:
+
+> `Jwt:Key nije konfiguriran. Postavi ga preko: dotnet user-secrets set "Jwt:Key" "<dugacak nasumican string>" (u EKvarovi.Api folderu).`
+
+Iz `EKvarovi.Api` foldera:
 
 ```
 cd EKvarovi.Api
-dotnet user-secrets set "Jwt:Key" "<dug nasumičan string, min 32 znaka>"
+dotnet user-secrets set "Jwt:Key" "<vaš-dugačak-nasumičan-string,-minimalno-32-znaka>"
+```
+
+`Jwt:Issuer` i `Jwt:Audience` se čitaju iz iste `Jwt` sekcije, ali `appsettings.json` već sadrži prazne defaultne vrijednosti za njih (`""`), pa nisu obavezni - aplikacija radi ispravno i bez njih. Ako ih želite eksplicitno postaviti:
+
+```
 dotnet user-secrets set "Jwt:Issuer" "EKvarovi.Api"
 dotnet user-secrets set "Jwt:Audience" "EKvarovi.App"
 ```
 
-### Baza i migracije
+Tajne se ovako drže isključivo u `dotnet user-secrets` (izvan repozitorija), nikad u `appsettings.json` ili u Blazoru.
 
-Nije potrebno ručno pokretati `Update-Database`. `Program.cs` na startu poziva `dbContext.Database.Migrate()`, pa se sve migracije (`InitialCreate`, `AddSystemAppUserSeed`, `AddFaultReportHistory`) same primjene zajedno sa seed podacima za lookup tablice. Baza je `EKvarovi.Api/EKvarovi.db`, obični SQLite file - ako ga obrišete, sljedeći put kad API krene kreira se ponovo od nule i sve migracije prođu iznova (testirano). Odmah nakon migracija pokreće se i `DemoUserSeeder` koji doda 4 demo korisnika (popis ispod), ako već ne postoje.
+### 4. Baza i migracije
 
-Lokacije i zaposlenici (`Location`, `Employee`) nemaju seed podatke - to su namjerno "prava" poslovna tablica koja se puni kroz UI, ne kroz migraciju. Na potpuno praznoj bazi to znači da prvo treba prijaviti se kao Admin i kroz Lokacije/Zaposlenici kreirati barem jednu aktivnu lokaciju i jednog zaposlenika s ulogom Prijavitelj (i jednog s ulogom Izvršitelj), tek onda demo Reporter/Technician računi imaju s čime raditi i prijava kvara ima gdje ići.
+Bazu nije potrebno ručno migrirati. `EKvarovi.Api/Program.cs` kod svakog starta poziva `dbContext.Database.Migrate()`, pa se sve migracije (`InitialCreate`, `AddSystemAppUserSeed`, `AddFaultReportHistory`) automatski primjene nad `EKvarovi.Api/EKvarovi.db` (SQLite datoteka koja se kreira ako ne postoji).
 
-### Kako pokrenuti
+Ručno pokretanje `dotnet ef database update` iz `EKvarovi.Api` foldera (ili `Update-Database` u Visual Studio Package Manager Consoli) je i dalje moguće, ali potpuno opcionalno - krajnji rezultat je identičan jer `Program.cs` to već radi umjesto vas.
 
-U Visual Studiju - postaviti *Multiple startup projects* na `EKvarovi.Api` i `EKvarovi.App` (oba na Start) pa pokrenuti. Ovo je već spremljeno u `EKvarovi.slnLaunch.user` u rootu.
+### 5. Seed podaci pri pokretanju
 
-Ili preko CLI-a, u dva odvojena terminala iz root foldera:
+Odmah nakon migracija, `Program.cs` redom pokreće dva seedera:
+
+- **`DemoDataSeeder`** - popunjava 8 lokacija (sve 4 vrste lokacije, uključujući jednu neaktivnu), 12 zaposlenika (mix prijavitelja/izvršitelja, neki su oboje), 8 materijala i 18 prijava kvarova raspoređenih kroz svih 6 statusa. Uključuje i povijest ponovne dodjele (jedna prijava reassignana s jednog izvršitelja na drugog), neuspješnu pa zatim uspješnu intervenciju na istoj dodjeli, utrošeni materijal na više intervencija, tri seed fotografije (uključujući uparen par prije/poslije), te potpuno popunjenu vremensku crtu (`FaultReportHistoryEvents`) za svaku prijavu.
+- **`DemoUserSeeder`** - dodaje 4 demo korisnička računa (popis ispod), od kojih su Technician i Reporter računi eksplicitno povezani s konkretnim, imenovanim `Employee` zapisima iz `DemoDataSeeder`-a.
+
+Oba seedera se pokreću pri svakom startu API-ja, ali se sami preskaču ako baza već ima podatke (`DemoDataSeeder` provjerava postoji li ijedna lokacija, `DemoUserSeeder` provjerava svaki korisnički email zasebno) - sigurno je pokretati API ponovno bez straha od duplih zapisa.
+
+### 6. Pokretanje oba projekta
+
+**Opcija A - Visual Studio:**
+
+1. Desni klik na Solution → *Configure Startup Projects* → *Multiple startup projects* → postaviti `EKvarovi.Api` i `EKvarovi.App` na akciju **Start** → OK. (Ova konfiguracija je već spremljena u `EKvarovi.slnLaunch.user` u rootu repozitorija, pa ovaj korak može biti već gotov.)
+2. **Važno:** u debug dropdown izborniku pored zelenog gumba Start, za `EKvarovi.Api` izričito odabrati launch profil **https** (ne `http`) - inače će API poslušati samo na portu 5153 bez porta 7094, na kojeg je App tvrdo vezan (vidi korak 7), pa se App neće moći spojiti na API.
+3. F5.
+
+**Opcija B - CLI, u dva odvojena terminala iz root foldera repozitorija:**
 
 ```
-dotnet run --project EKvarovi.Api
-dotnet run --project EKvarovi.App
+dotnet run --project EKvarovi.Api --launch-profile https
 ```
 
-Api sluša na `https://localhost:7094` (swagger na `/swagger`), App na `https://localhost:7061`. Pažnja: App ima hardkodiran API URL u `EKvarovi.App/Program.cs` (`https://localhost:7094/`), pa Api mora raditi baš na tom portu da se App uspije spojiti.
+```
+dotnet run --project EKvarovi.App --launch-profile https
+```
+
+`--launch-profile https` je obavezan za `EKvarovi.Api` iz istog razloga kao u koraku iznad - default profil (`http`) ne otvara port 7094.
+
+### 7. Provjera da je API pokrenut
+
+API sluša na `https://localhost:7094` (vidi `EKvarovi.Api/Properties/launchSettings.json`, profil `https`). Swagger je dostupan na:
+
+```
+https://localhost:7094/swagger
+```
+
+### 8. Otvaranje aplikacije
+
+App sluša na `https://localhost:7061` (vidi `EKvarovi.App/Properties/launchSettings.json`, profil `https`). Preglednik bi se trebao sam otvoriti; ako se ne otvori, ručno otvorite:
+
+```
+https://localhost:7061/login
+```
+
+### 9. Prva prijava
+
+Prijavite se bilo kojim demo računom iz tablice ispod (npr. `admin@ekvarovi.hr`). Odmah nakon prijave trebali biste vidjeti Dashboard popunjen demo podacima (brojke otvorenih/kritičnih/zakašnjelih prijava, SLA grafovi, zadnjih 5 prijava) zahvaljujući automatskom seedu iz koraka 5 - to je potvrda da je sve ispravno postavljeno.
+
+### Provjera od nule (preporučeno prije predaje)
+
+Za potpunu provjeru da ovaj vodič radi, obrišite lokalnu `EKvarovi.db` datoteku (ili klonirajte repozitorij u potpuno nov folder) i ponovite korake 3-9 od početka.
 
 ## Demo korisnički računi
-
-Tehničar i prijavitelj se pri seedanju automatski povežu s prvim postojećim `Employee` zapisom koji ima `IsTechnician`/`IsReporter`, ako takav zapis već postoji u bazi.
 
 **Admin**
 - Email: `admin@ekvarovi.hr`
@@ -70,44 +136,58 @@ Tehničar i prijavitelj se pri seedanju automatski povežu s prvim postojećim `
 - Email: `manager@ekvarovi.hr`
 - Lozinka: `Lozinka123!`
 
-**Technician**
+**Technician** (povezan sa zaposlenikom Domagoj Perković)
 - Email: `tehnicar@ekvarovi.hr`
 - Lozinka: `Lozinka123!`
 
-**Reporter**
+**Reporter** (povezan sa zaposlenikom Sara Kralj)
 - Email: `prijavitelj@ekvarovi.hr`
 - Lozinka: `Lozinka123!`
 
-## Što je napravljeno
+## Implementirane funkcionalnosti
 
 ### Obavezni dio
 
-- puna povijest umjesto brisanja podataka: `WorkAssignments` (povijest dodjela, uvijek najviše jedna aktivna po prijavi - filtrirani unique index), `Interventions` (više intervencija po dodjeli, i neuspješne ostaju zabilježene), `InterventionMaterials` (M:N materijal-intervencija s količinom), `Attachments`, `FaultReportHistoryEvents`
-- 4 uloge, autorizacija na razini kontrolera (`[Authorize(Roles = ...)]`) plus ownership provjere - ne samo skrivanje gumba u UI-ju
-- DTO-i odvojeni od entity modela
-- filtriranje, pretraga i sortiranje idu preko query parametara na `/api/fault-reports` i `/api/interventions`, znači server-side, ne lokalno u Blazoru
-- lookup podaci se dohvaćaju s `LookupsController`-a
-- upload slika/dokumenata - provjera content-typea (jpeg/png/webp za slike, pdf za dokumente), max 10 MB, fizičko ime datoteke je GUID, original naziv/content-type/veličina/vrijeme uploada se čuvaju u bazi, brisanje makne i fajl i zapis iz baze
-- JWT login (`/api/auth/login`, `/api/auth/me`)
-- `/mine` endpointi koji identitet čitaju isključivo iz JWT-a: `/api/fault-reports/mine` (Reporter), `/api/work-assignments/mine` (Technician)
-- cijeli tok statusa: Zaprimljeno → Pregledano → Dodijeljeno → U radu → Riješeno → Zatvoreno, s endpointima za review i close (close radi samo Admin/Manager, i samo ako postoji uspješno završena intervencija)
-- upravljanje korisnicima, samo Admin - kreiranje, dodjela uloga, deaktivacija, povezivanje s Employee zapisom
+- Model s poviješću umjesto brisanja: `WorkAssignments` (povijest dodjela, filtrirani unique index osigurava najviše jednu aktivnu dodjelu po prijavi), `Interventions` (0..N intervencija po dodjeli, neuspješne ostaju trajno zabilježene), `InterventionMaterials` (M:N materijal↔intervencija s količinom), `Attachments`, `FaultReportHistoryEvents`.
+- 4 uloge (Admin, Manager, Technician, Reporter) s autorizacijom i ownership provjerama na razini API kontrolera (`[Authorize(Roles = ...)]` + provjere u servisu) - ne samo skrivanje gumba u Blazoru.
+- DTO modeli potpuno odvojeni od entity modela (`EKvarovi.Shared/DTOs` vs `EKvarovi.Shared/Models`).
+- Server-side filtriranje, pretraga i sortiranje preko query parametara na `GET /api/faultreports` i `GET /api/interventions`.
+- Lookup podaci (vrste kvara, prioriteti, statusi, jedinice mjere...) dohvaćaju se s `LookupsController`-a.
+- Upload fotografija/dokumenata s validacijom: dopušteni content-typeovi `image/jpeg`, `image/png`, `image/webp` za fotografije i `application/pdf` za dokumente, maksimalno 10 MB, sigurno generirano fizičko ime (GUID), original naziv/content-type/veličina/vrijeme uploada spremljeni u bazi, brisanje uklanja i fizičku datoteku i DB zapis.
+- JWT autentikacija (`POST /api/auth/login`, `GET /api/auth/me`) s rate-limitingom na login endpointu (5 pokušaja/min po IP adresi).
+- `/mine` endpointi koji identitet čitaju isključivo iz JWT claima: `GET /api/faultreports/mine` (Reporter), `GET /api/work-assignments/mine` (Technician).
+- Cijeli propisani tok statusa: Zaprimljeno → Pregledano → Dodijeljeno → U radu → Riješeno → Zatvoreno, s posebnim endpointima za pregled (`PUT /api/faultreports/{id}/review`) i zatvaranje (`PUT /api/faultreports/{id}/close` - dopušteno samo Admin/Manager, i samo ako postoji barem jedna uspješno završena intervencija).
+- Upravljanje korisničkim računima (samo Admin) - kreiranje, dodjela uloga, deaktivacija, povezivanje računa s `Employee` zapisom.
 
-### Bonus dio
+### Bonus dio (iz specifikacije)
 
-- usporedba fotografija prije/poslije na profilu prijave
-- vremenska crta (timeline) svih promjena na prijavi
-- SLA pokazatelji i trendovi po lokaciji i vrsti kvara, računa ih API a ne frontend
+- Usporedba fotografija prije/poslije na profilu prijave, po intervenciji.
+- Mobilna prilagodba sučelja (responzivni MudBlazor grid layout).
+- SLA pokazatelji s grafovima po lokaciji i vrsti kvara (prosječno vrijeme rješavanja, postotak riješenih na vrijeme) - izračunava ih API, ne frontend.
+- Vremenska crta (timeline) svih promjena na prijavi.
 
-### AI dio
+### AI funkcionalnosti
 
-Napravljeno preko `IAiService` sučelja s `MockAiService` implementacijom - radi bez ikakvog API ključa, čista heuristika nad tekstom opisa. Dvije stvari:
+Implementirano iza `IAiService` sučelja s `MockAiService` implementacijom - radi bez ikakvog vanjskog API poziva ili ključa, kroz prepoznavanje ključnih riječi i deterministička pravila (konfigurabilno kroz `Ai:Provider` u konfiguraciji, radi zamjene za stvarni provider u budućnosti):
 
-- prijedlog vrste i prioriteta kvara iz opisa (`POST /api/ai/fault-report-suggestion`)
-- sažetak radnog naloga na temelju svih intervencija i materijala (`GET /api/ai/work-order-summary/{id}`)
+- Prijedlog vrste i prioriteta kvara na temelju opisa (`POST /api/ai/fault-report-suggestion`), prikazan unutar dijaloga za pregled prijave.
+- Sažetak radnog naloga na temelju svih intervencija i utrošenog materijala (`GET /api/ai/work-order-summary/{workAssignmentId}`).
 
-AI ovdje ništa sam ne sprema - samo vrati prijedlog, korisnik (Admin/Manager) ga mora ručno potvrditi kroz postojeći review endpoint prije nego se stvarno spremi.
+AI ovdje ništa sam ne sprema - samo vraća prijedlog; Admin/Manager ga mora ručno potvrditi kroz postojeći review flow prije nego se stvarno spremi.
+
+### Dodatna poboljšanja (izvan obavezne specifikacije)
+
+- Bulk dodjela izvršitelja (`POST /api/work-assignments/bulk`) - dodjela više odabranih prijava odjednom, uz preskakanje onih koje već imaju aktivnu dodjelu.
+- Prikaz trenutnog opterećenja (workload) izvršitelja unutar dijaloga za dodjelu, prije nego se odabere kome dodijeliti.
+- Export popisa prijava u CSV i PDF (`GET /api/faultreports/export/csv`, `GET /api/faultreports/export/pdf`), uz iste filtere kao i tablični prikaz.
+- Globalna pretraga kroz cijelu aplikaciju (`SearchController` + pretraga u AppBar-u).
+- Upozorenja za rokove na dashboardu (zakašnjele prijave, prijave kojima rok ističe u sljedeća 24h).
+- Brzi filteri na popisu prijava (kritične, bez izvršitelja, ovaj tjedan, rok uskoro ističe).
+- Ispis radnog naloga na posebnoj print stranici.
+- Tamna tema.
+- Personalizirani dashboard za Technician/Reporter korisnike (`GET /api/dashboard/personal`).
+- Stranica "O aplikaciji".
 
 ## Sigurnost
 
-JWT ključ ide isključivo kroz `dotnet user-secrets`, nikad u `appsettings.json` ili git. Lozinke su hashirane preko `PasswordHasher<AppUser>`, ne stoje kao čisti tekst. Autorizacija (role + ownership) provjerava se na API-ju na svakom zaštićenom endpointu, ne samo u UI-ju.
+JWT signing key ide isključivo kroz `dotnet user-secrets`, nikad u `appsettings.json` ili u git repozitorij. Lozinke su hashirane preko `PasswordHasher<AppUser>`, nikad spremljene kao čisti tekst. Autorizacija (uloge + ownership) provjerava se na API razini na svakom zaštićenom endpointu, ne samo skrivanjem akcija u Blazor sučelju. Login endpoint je dodatno zaštićen rate-limitingom protiv brute-force pokušaja.

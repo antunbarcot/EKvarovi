@@ -5,7 +5,6 @@ public class SaveUserAdminDto
     public string Email { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
 
-    // Obavezno kod kreiranja; kod uredivanja null/prazno znaci "ne mijenjaj lozinku"
     public string? Password { get; set; }
 
     public bool IsActive { get; set; }

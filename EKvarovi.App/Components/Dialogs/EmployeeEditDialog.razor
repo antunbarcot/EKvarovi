@@ -108,9 +108,6 @@
 
     private static async Task<string> ReadErrorMessageAsync(HttpResponseMessage response)
     {
-        // API-jev BadRequest(string) stize kao goli "text/plain" (ne "application/json"),
-        // pa ReadFromJsonAsync<string>() ovdje puca ("'X' is an invalid start of a value").
-        // ReadAsStringAsync radi za oba slucaja - i za goli tekst i za JSON-citiran string.
         var raw = await response.Content.ReadAsStringAsync();
         if (string.IsNullOrWhiteSpace(raw))
         {
@@ -125,7 +122,6 @@
             }
             catch
             {
-                // padne na goli tekst ispod
             }
         }
 

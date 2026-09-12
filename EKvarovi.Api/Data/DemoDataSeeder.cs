@@ -5,26 +5,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EKvarovi.Api.Data;
 
-// Bogat demo seed (lokacije, zaposlenici, materijali, prijave kroz SVE statuse, dodjele,
-// intervencije, povijest) tako da netko tko PRVI PUT pokrene aplikaciju odmah vidi Dashboard,
-// SLA izvještaj, grafove i timeline popunjene smislenim podacima - ne praznu bazu ni "test 1/2/3".
-// Mora se pokrenuti PRIJE DemoUserSeeder-a: tehnicar@/prijavitelj@ AppUser racuni se vezuju na
-// KONKRETNE Employee zapise iz ovog seeda preko Email markera (vidi TechnicianMarkerEmail/
-// ReporterMarkerEmail), pa ti Employee zapisi moraju vec postojati kad se DemoUserSeeder izvrsi.
 public static class DemoDataSeeder
 {
-    // Markeri preko kojih DemoUserSeeder pronalazi TOCNO ODREDJENI Employee zapis za
-    // tehnicar@/prijavitelj@ demo racune - eksplicitno i predvidljivo, umjesto krhkog
-    // "prvi pronadjeni po ulozi" pristupa.
     internal const string TechnicianMarkerEmail = "tehnicar@ekvarovi.hr";
     internal const string ReporterMarkerEmail = "prijavitelj@ekvarovi.hr";
 
-    // Privremeni placeholder AppUserId dok JWT autentikacija ne pokriva seed kontekst - isti
-    // sistemski racun (Id=1, "Sistem") koji WorkAssignmentsController/AttachmentsController
-    // koriste kao AssignedByAppUserId/UploadedByAppUserId placeholder.
     private const int SystemAppUserId = 1;
 
-    // Id-jevi lookup sifrarnika - moraju odgovarati EKvaroviDbContext.SeedLookups HasData.
     private const int LocationTypeUpravnaZgrada = 1;
     private const int LocationTypeSkola = 2;
     private const int LocationTypeZdravstvena = 3;
@@ -71,8 +58,6 @@ public static class DemoDataSeeder
 
     public static async Task SeedAsync(EKvaroviDbContext db, string contentRootPath)
     {
-        // Zastita od dupliciranja na svaki restart - isti princip kao DemoUserSeeder,
-        // samo na razini cijelog demo skupa podataka (dovoljno provjeriti jednu tablicu).
         if (await db.Locations.AnyAsync())
         {
             return;
@@ -98,8 +83,6 @@ public static class DemoDataSeeder
         var l5 = new Location { Name = "Dom zdravlja Centar", Address = "Spinčićeva 1, Split", LocationTypeId = LocationTypeZdravstvena, IsActive = true, CreatedAt = createdAt };
         var l6 = new Location { Name = "Poliklinika Istok", Address = "Vukovarska 46, Split", LocationTypeId = LocationTypeZdravstvena, IsActive = true, CreatedAt = createdAt };
         var l7 = new Location { Name = "Skladište Županije - Sjever", Address = "Kopilica 5, Split", LocationTypeId = LocationTypeSkladiste, IsActive = true, CreatedAt = createdAt };
-        // Namjerno neaktivna - demo/edge-case za pravilo "prijava mora pripadati aktivnoj lokaciji"
-        // (forma je ne bi smjela ni ponuditi, ali korisna je za rucno testiranje odbijanja na API-ju).
         var l8 = new Location { Name = "Upravna zgrada - Podružnica Jug", Address = "Poljička cesta 100, Split", LocationTypeId = LocationTypeUpravnaZgrada, IsActive = false, CreatedAt = createdAt };
 
         db.Locations.AddRange(l1, l2, l3, l4, l5, l6, l7, l8);
@@ -127,9 +110,6 @@ public static class DemoDataSeeder
         var luka = new Employee { LocationId = loc.L5.Id, FirstName = "Luka", LastName = "Jurić", Email = "luka.juric@zupanija.hr", IsReporter = true, IsTechnician = false, IsActive = true, CreatedAt = createdAt };
         var petar = new Employee { LocationId = loc.L6.Id, FirstName = "Petar", LastName = "Vuković", Email = "petar.vukovic@zupanija.hr", IsReporter = true, IsTechnician = false, IsActive = true, CreatedAt = createdAt };
         var josip = new Employee { LocationId = loc.L7.Id, FirstName = "Josip", LastName = "Radić", Email = "josip.radic@zupanija.hr", IsReporter = true, IsTechnician = true, IsActive = true, CreatedAt = createdAt };
-        // Marker zaposlenici - DemoUserSeeder ih pronalazi preko Email polja (TechnicianMarkerEmail/
-        // ReporterMarkerEmail), pa prijava kao tehnicar@/prijavitelj@ UVIJEK vidi istu, predvidljivu
-        // kolicinu podataka na MyAssignments/MyReports.
         var domagoj = new Employee { LocationId = loc.L1.Id, FirstName = "Domagoj", LastName = "Perković", Email = TechnicianMarkerEmail, IsReporter = false, IsTechnician = true, IsActive = true, CreatedAt = createdAt };
         var sara = new Employee { LocationId = loc.L3.Id, FirstName = "Sara", LastName = "Kralj", Email = ReporterMarkerEmail, IsReporter = true, IsTechnician = false, IsActive = true, CreatedAt = createdAt };
         var filip = new Employee { LocationId = loc.L5.Id, FirstName = "Filip", LastName = "Matić", Email = "filip.matic@zupanija.hr", IsReporter = false, IsTechnician = true, IsActive = true, CreatedAt = createdAt };
@@ -169,17 +149,10 @@ public static class DemoDataSeeder
         DateTime now,
         string contentRootPath)
     {
-        // === 1. FaultReports (finalno stanje polja) - status/tip/prioritet/rok postavljeni
-        // izravno na krajnju vrijednost, a cijeli "kako je do toga doslo" tok gradi se ispod
-        // kroz WorkAssignments/Interventions i povijest (isti pristup kao DemoUserSeeder:
-        // izravna izgradnja entiteta, ne poziv kroz kontrolere/DTO-e). ===
-
-        // -- Zaprimljeno (3) - bez tipa/prioriteta/roka, cekaju pregled Upravitelja --
         var fr01 = NewReport(loc.L1.Id, emp.Petra.Id, "Ne radi rasvjeta u hodniku drugog kata.", null, null, StatusZaprimljeno, null, now.AddHours(-18), now.AddHours(-18));
         var fr02 = NewReport(loc.L3.Id, emp.Sara.Id, "Pukla je cijev u sanitarnom čvoru u prizemlju, voda curi po podu.", null, null, StatusZaprimljeno, null, now.AddHours(-6), now.AddHours(-6));
         var fr03 = NewReport(loc.L5.Id, emp.Luka.Id, "Radijatori u čekaonici prijema su hladni, grijanje ne radi.", null, null, StatusZaprimljeno, null, now.AddHours(-2), now.AddHours(-2));
 
-        // -- Pregledano (2) - tip/prioritet/rok postavljeni, jos nema dodjele --
         var fr04CreatedAt = now.AddDays(-2);
         var fr04ReviewedAt = fr04CreatedAt.AddHours(6);
         var fr04 = NewReport(loc.L2.Id, emp.Ana.Id, "Curi slavina u kuhinji na katu, potrebna zamjena brtve.", FaultTypeVoda, PrioritySrednji, StatusPregledano, now.AddDays(5), fr04CreatedAt, fr04ReviewedAt);
@@ -188,11 +161,9 @@ public static class DemoDataSeeder
         var fr05ReviewedAt = fr05CreatedAt.AddHours(4);
         var fr05 = NewReport(loc.L3.Id, emp.Sara.Id, "Kratki spoj u razvodnom ormariću, povremeno nestaje struja u učionici.", FaultTypeElektrika, PriorityVisok, StatusPregledano, now.AddHours(36), fr05CreatedAt, fr05ReviewedAt);
 
-        // -- Dodijeljeno (4) - aktivna dodjela postoji, intervencija jos nije pokrenuta --
         var fr06CreatedAt = now.AddDays(-5);
         var fr06ReviewedAt = fr06CreatedAt.AddHours(5);
         var fr06AssignedAt = fr06CreatedAt.AddHours(10);
-        // Kritican prioritet s rokom koji je VEC PROSAO - demo "Zakasnjele" pokazatelja na Dashboardu.
         var fr06 = NewReport(loc.L1.Id, emp.Petra.Id, "Ispao je osigurač na cijelom katu, rasvjeta i utičnice ne rade.", FaultTypeElektrika, PriorityKritican, StatusDodijeljeno, now.AddDays(-2), fr06CreatedAt, fr06AssignedAt);
 
         var fr07CreatedAt = now.AddDays(-4);
@@ -211,12 +182,10 @@ public static class DemoDataSeeder
         var fr09AssignedAt = fr09CreatedAt.AddHours(7);
         var fr09 = NewReport(loc.L7.Id, emp.Josip.Id, "Vrata skladišnog boksa br. 3 se ne mogu zaključati, oštećena brava.", FaultTypeGradevinski, PriorityNizak, StatusDodijeljeno, now.AddDays(14), fr09CreatedAt, fr09AssignedAt);
 
-        // -- U radu (2) - aktivna intervencija u tijeku --
         var fr10CreatedAt = now.AddDays(-6);
         var fr10ReviewedAt = fr10CreatedAt.AddHours(5);
         var fr10AssignedAt = fr10CreatedAt.AddDays(1);
         var fr10IntStart = now.AddHours(-2);
-        // Rok unutar sljedecih 24h - demo "Rok uskoro istice" pokazatelja.
         var fr10 = NewReport(loc.L2.Id, emp.Ana.Id, "Curi cijev ispod sudopera u čajnoj kuhinji, voda se skuplja na podu.", FaultTypeVoda, PriorityVisok, StatusURadu, now.AddHours(10), fr10CreatedAt, fr10IntStart);
 
         var fr11CreatedAt = now.AddDays(-10);
@@ -225,7 +194,6 @@ public static class DemoDataSeeder
         var fr11IntStart = now.AddDays(-1);
         var fr11 = NewReport(loc.L5.Id, emp.Luka.Id, "Grijanje u čekaonici radi s prekidima, potrebna provjera sustava.", FaultTypeGrijanje, PrioritySrednji, StatusURadu, now.AddDays(20), fr11CreatedAt, fr11IntStart);
 
-        // -- Riješeno (2) - uspjesna intervencija zavrsena, ceka zatvaranje --
         var fr12CreatedAt = now.AddDays(-4);
         var fr12ReviewedAt = fr12CreatedAt.AddHours(4);
         var fr12AssignedAt = fr12CreatedAt.AddHours(9);
@@ -240,7 +208,6 @@ public static class DemoDataSeeder
         var fr13IntEnd = now.AddDays(-1);
         var fr13 = NewReport(loc.L3.Id, emp.Sara.Id, "Ventil na glavnom vodovodnom priključku propušta vodu.", FaultTypeVoda, PrioritySrednji, StatusRijeseno, now.AddDays(2), fr13CreatedAt, fr13IntEnd);
 
-        // -- Zatvoreno (5) - cijeli tok odradjen, CreatedAt rasporedjen kroz zadnja ~3 mjeseca --
         var fr14CreatedAt = now.AddDays(-85);
         var fr14ReviewedAt = fr14CreatedAt.AddHours(6);
         var fr14AssignedAt = fr14CreatedAt.AddDays(1);
@@ -259,7 +226,6 @@ public static class DemoDataSeeder
         var fr15IntBStart = fr15CreatedAt.AddDays(4);
         var fr15IntBEnd = fr15IntBStart.AddHours(5);
         var fr15ClosedAt = fr15IntBEnd.AddDays(1);
-        // NAJVAZNIJI scenarij specifikacije: neuspjesna pa nova (uspjesna) intervencija na ISTOJ dodjeli.
         var fr15 = NewReport(loc.L4.Id, emp.Stjepan.Id, "Kotlovnica povremeno gasi grijanje, termostat vjerojatno neispravan.", FaultTypeGrijanje, PriorityKritican, StatusZatvoreno, fr15DueDate, fr15CreatedAt, fr15ClosedAt);
 
         var fr16CreatedAt = now.AddDays(-45);
@@ -293,8 +259,6 @@ public static class DemoDataSeeder
         db.FaultReports.AddRange(allReports);
         await db.SaveChangesAsync();
 
-        // === 2. WorkAssignments (dodjele) - jedna po prijavi od "Dodijeljeno" nadalje,
-        // osim fr07 koja ima POVIJEST reassignmenta (stara neaktivna + nova aktivna dodjela). ===
         var wa06 = NewAssignment(fr06.Id, emp.Domagoj.Id, fr06AssignedAt, true, null, null);
 
         var wa07Old = NewAssignment(fr07.Id, emp.Filip.Id, fr07FirstAssignedAt, false, fr07ReassignAt, null);
@@ -315,7 +279,6 @@ public static class DemoDataSeeder
         db.WorkAssignments.AddRange(wa06, wa07Old, wa07New, wa08, wa09, wa10, wa11, wa12, wa13, wa14, wa15, wa16, wa17, wa18);
         await db.SaveChangesAsync();
 
-        // === 3. Interventions ===
         var i10 = NewIntervention(wa10.Id, IntStatusUTijeku, fr10IntStart, null, null, null);
         var i11 = NewIntervention(wa11.Id, IntStatusUTijeku, fr11IntStart, null, null, null);
 
@@ -326,7 +289,6 @@ public static class DemoDataSeeder
         var i14 = NewIntervention(wa14.Id, IntStatusZavrsena, fr14IntStart, fr14IntEnd, DurationMinutes(fr14IntStart, fr14IntEnd),
             "Popravljen prekidač u sobi 214.");
 
-        // Neuspjesna pa nova uspjesna intervencija na ISTOJ dodjeli (wa15).
         var i15a = NewIntervention(wa15.Id, IntStatusNeuspjesna, fr15IntAStart, fr15IntAEnd, DurationMinutes(fr15IntAStart, fr15IntAEnd),
             "Zamijenjen termostat, no problem se ponovno pojavio nakon par sati - potrebna dodatna dijagnostika kotlovnice.");
         var i15b = NewIntervention(wa15.Id, IntStatusZavrsena, fr15IntBStart, fr15IntBEnd, DurationMinutes(fr15IntBStart, fr15IntBEnd),
@@ -342,7 +304,6 @@ public static class DemoDataSeeder
         db.Interventions.AddRange(i10, i11, i12, i13, i14, i15a, i15b, i16, i17, i18);
         await db.SaveChangesAsync();
 
-        // === 4. InterventionMaterials (materijal i kolicina na nekoliko zavrsenih intervencija) ===
         db.InterventionMaterials.AddRange(
             new InterventionMaterial { InterventionId = i12.Id, MaterialId = mat.Kabel.Id, Quantity = 8m },
             new InterventionMaterial { InterventionId = i12.Id, MaterialId = mat.Vijci.Id, Quantity = 12m },
@@ -353,9 +314,6 @@ public static class DemoDataSeeder
             new InterventionMaterial { InterventionId = i16.Id, MaterialId = mat.Vijci.Id, Quantity = 4m },
             new InterventionMaterial { InterventionId = i17.Id, MaterialId = mat.Kabel.Id, Quantity = 15m });
 
-        // === 5. Attachments - 2-3 male placeholder PNG slike, generirane u runtimeu (bez vanjske
-        // slikovne biblioteke) i fizicki spremljene u wwwroot/uploads s generiranim GUID imenom,
-        // isti obrazac kao AttachmentsController.UploadAttachment. ===
         var uploadsFolder = Path.Combine(contentRootPath, "wwwroot", "uploads");
         Directory.CreateDirectory(uploadsFolder);
 
@@ -401,9 +359,6 @@ public static class DemoDataSeeder
                 UploadedByAppUserId = SystemAppUserId
             });
 
-        // === 6. FaultReportHistoryEvents - vremenska crta za SVAKU prijavu, ista tvornica i
-        // isti EventType nazivi koje koriste FaultReportsController/WorkAssignmentsController/
-        // InterventionsController, tako da "Vremenska crta" izgleda identicno stvarnom toku. ===
         var history = new List<FaultReportHistoryEvent>();
 
         void Created(FaultReport fr, DateTime at) => history.Add(FaultReportHistoryEvents.Create(fr.Id, "StatusChanged", null, NameZaprimljeno, SystemAppUserId, at));
@@ -427,16 +382,13 @@ public static class DemoDataSeeder
         void Closed(FaultReport fr, DateTime at)
             => history.Add(FaultReportHistoryEvents.Create(fr.Id, "StatusChanged", NameRijeseno, NameZatvoreno, SystemAppUserId, at));
 
-        // Zaprimljeno
         Created(fr01, fr01.CreatedAt);
         Created(fr02, fr02.CreatedAt);
         Created(fr03, fr03.CreatedAt);
 
-        // Pregledano
         Created(fr04, fr04CreatedAt); Reviewed(fr04, "Voda", "Srednji", fr04ReviewedAt);
         Created(fr05, fr05CreatedAt); Reviewed(fr05, "Elektrika", "Visok", fr05ReviewedAt);
 
-        // Dodijeljeno
         Created(fr06, fr06CreatedAt); Reviewed(fr06, "Elektrika", "Kritičan", fr06ReviewedAt); Assigned(fr06, "Domagoj Perković", fr06AssignedAt);
 
         Created(fr07, fr07CreatedAt); Reviewed(fr07, "Grijanje", "Visok", fr07ReviewedAt);
@@ -446,25 +398,19 @@ public static class DemoDataSeeder
         Created(fr08, fr08CreatedAt); Reviewed(fr08, "Mreža", "Srednji", fr08ReviewedAt); Assigned(fr08, "Ivan Kovačević", fr08AssignedAt);
         Created(fr09, fr09CreatedAt); Reviewed(fr09, "Građevinski radovi", "Nizak", fr09ReviewedAt); Assigned(fr09, "Tomislav Babić", fr09AssignedAt);
 
-        // U radu
         Created(fr10, fr10CreatedAt); Reviewed(fr10, "Voda", "Visok", fr10ReviewedAt); Assigned(fr10, "Ivan Kovačević", fr10AssignedAt); InterventionStarted(fr10, fr10IntStart);
         Created(fr11, fr11CreatedAt); Reviewed(fr11, "Grijanje", "Srednji", fr11ReviewedAt); Assigned(fr11, "Filip Matić", fr11AssignedAt); InterventionStarted(fr11, fr11IntStart);
 
-        // Riješeno
         Created(fr12, fr12CreatedAt); Reviewed(fr12, "Elektrika", "Kritičan", fr12ReviewedAt); Assigned(fr12, "Domagoj Perković", fr12AssignedAt);
         InterventionStarted(fr12, fr12IntStart); Resolved(fr12, fr12IntEnd);
 
         Created(fr13, fr13CreatedAt); Reviewed(fr13, "Voda", "Srednji", fr13ReviewedAt); Assigned(fr13, "Josip Radić", fr13AssignedAt);
         InterventionStarted(fr13, fr13IntStart); Resolved(fr13, fr13IntEnd);
 
-        // Zatvoreno
         Created(fr14, fr14CreatedAt); Reviewed(fr14, "Elektrika", "Visok", fr14ReviewedAt); Assigned(fr14, "Ivan Kovačević", fr14AssignedAt);
         InterventionStarted(fr14, fr14IntStart); Resolved(fr14, fr14IntEnd); Closed(fr14, fr14ClosedAt);
 
         Created(fr15, fr15CreatedAt); Reviewed(fr15, "Grijanje", "Kritičan", fr15ReviewedAt); Assigned(fr15, "Tomislav Babić", fr15AssignedAt);
-        // Status prijave se biljezi u povijest SAMO kod prve intervencije na dodjeli (isto pravilo
-        // kao InterventionsController.StartIntervention) - druga (uspjesna) intervencija na istoj
-        // dodjeli vise ne mijenja "Dodijeljeno -> U radu" jer je prijava vec U radu.
         InterventionStarted(fr15, fr15IntAStart); Resolved(fr15, fr15IntBEnd); Closed(fr15, fr15ClosedAt);
 
         Created(fr16, fr16CreatedAt); Reviewed(fr16, "Voda", "Nizak", fr16ReviewedAt); Assigned(fr16, "Filip Matić", fr16AssignedAt);
@@ -537,13 +483,9 @@ public static class DemoDataSeeder
         return (storedFileName, bytes.LongLength);
     }
 
-    // Generira minimalnu ispravnu 1x1 RGB PNG datoteku u runtimeu (bez vanjske slikovne
-    // biblioteke poput System.Drawing) - koristi System.IO.Compression.ZLibStream (zlib format
-    // s Adler32 checksumom, dostupan od .NET 6) za IDAT kompresiju i rucno izracunat CRC32 za
-    // svaki chunk, prema PNG specifikaciji.
     private static byte[] CreatePlaceholderPng(byte r, byte g, byte b)
     {
-        var rawScanline = new byte[] { 0, r, g, b }; // filter byte 0 (None) + jedan RGB piksel
+        var rawScanline = new byte[] { 0, r, g, b };
 
         using var idatStream = new MemoryStream();
         using (var zlib = new ZLibStream(idatStream, CompressionLevel.Optimal, leaveOpen: true))
@@ -564,13 +506,13 @@ public static class DemoDataSeeder
     private static byte[] BuildIhdr()
     {
         var ihdr = new byte[13];
-        WriteBigEndianInt32(ihdr, 0, 1); // sirina = 1px
-        WriteBigEndianInt32(ihdr, 4, 1); // visina = 1px
-        ihdr[8] = 8;  // bit depth
-        ihdr[9] = 2;  // color type: Truecolor (RGB)
-        ihdr[10] = 0; // compression method
-        ihdr[11] = 0; // filter method
-        ihdr[12] = 0; // interlace method
+        WriteBigEndianInt32(ihdr, 0, 1);
+        WriteBigEndianInt32(ihdr, 4, 1);
+        ihdr[8] = 8;
+        ihdr[9] = 2;
+        ihdr[10] = 0;
+        ihdr[11] = 0;
+        ihdr[12] = 0;
         return ihdr;
     }
 

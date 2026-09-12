@@ -42,9 +42,6 @@
 </div>
 
 <style>
-    /* Login stranica je jedina koja "izlazi" iz standardnog pa-6/mt-16 okvira MudMainContent-a
-       (negativna margina ponisti pa-6) kako bi gradient/skyline pozadina popunila cijeli
-       dostupni prostor ispod AppBar-a (64px), a ne samo unutrasnji dio s marginama. */
     .login-page {
         position: relative;
         min-height: calc(100vh - 64px);
@@ -119,8 +116,6 @@
                 }
             }
 
-            // Namjerno ista genericka poruka za sve neuspjesne slucajeve (401 itd.) -
-            // ne otkrivamo napadacu razlog neuspjeha, isto kao sto to vec radi API.
             _errorMessage = "Neispravni podaci za prijavu.";
         }
         catch (HttpRequestException)

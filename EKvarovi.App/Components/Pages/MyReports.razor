@@ -18,8 +18,6 @@
 }
 else if (!_hasAccess)
 {
-    @* Prava zastita je vec [Authorize(Roles="Reporter")] na api/fault-reports/mine -
-       ovo je samo UX zastita da korisnik bez uloge Reporter ne gleda praznu stranicu. *@
     <MudAlert Severity="Severity.Warning">Nemate pristup ovoj stranici.</MudAlert>
 }
 else
@@ -81,8 +79,6 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        // Bez ovoga bi provjera uloge ispod mogla ispasti pogresna - CurrentUserService
-        // svoje stanje (Roles, EmployeeId) ucitava asinkrono iz sessionStorage.
         await CurrentUserService.EnsureInitializedAsync();
         _hasAccess = CurrentUserService.IsInRole("Reporter");
 
@@ -103,8 +99,6 @@ else
 
         try
         {
-            // Napomena: NE saljemo nikakav ID - server identitet cita iskljucivo iz
-            // JWT "EmployeeId" claima (vidi GET api/fault-reports/mine na API-ju).
             var reportsTask = Http.GetFromJsonAsync<List<FaultReportDto>>("api/fault-reports/mine");
             var locationsTask = Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/locations");
             await Task.WhenAll(reportsTask, locationsTask);
@@ -124,8 +118,6 @@ else
 
     private async Task OpenCreateDialogAsync()
     {
-        // Isti dijalog kao na FaultReports.razor, ali "Prijavitelj" dropdown dobiva
-        // SAMO trenutnog korisnika - Reporter tako uvijek prijavljuje u svoje ime.
         var selfAsReporter = new List<LookupDto>();
         if (CurrentUserService.EmployeeId.HasValue)
         {

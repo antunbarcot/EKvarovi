@@ -4,8 +4,6 @@
 
 <MudDialog>
     <DialogContent>
-        <MudText Typo="Typo.h6" Class="mb-3">AI sažetak radnog naloga</MudText>
-
         @if (_isLoading)
         {
             <div class="d-flex justify-center pa-4">
@@ -69,8 +67,6 @@
         }
     }
 
-    // MockAiService vraca jedan tekstualni blok - dijelimo ga po recenicama radi
-    // citljivosti (umjesto jednog velikog paragrafa u dijalogu).
     private static List<string> SplitIntoSentences(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))

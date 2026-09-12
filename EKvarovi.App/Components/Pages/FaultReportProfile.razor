@@ -167,11 +167,6 @@ else
                                                OnClick="@(() => ShowAiSummaryAsync(assignment.Id))" />
                             </MudTooltip>
                         }
-                        @* Obican <a target="_blank"> namjerno umjesto MudButton+NavigationManager - Blazor Server
-                           SignalR navigacija unutar istog kruga ne otvara novi tab, obican link otvara. rel="opener"
-                           je OBAVEZAN ovdje - Chrome inace na target="_blank" tiho primjenjuje noopener izolaciju,
-                           sto prekida nasljedivanje sessionStorage u novi tab (login token bi izgledao "izgubljen"
-                           u printu iako je korisnik prijavljen, jer CurrentUserService cita token iz sessionStorage). *@
                         <MudTooltip Text="Ispiši radni nalog">
                             <a href="@($"/work-assignments/{assignment.Id}/print")" target="_blank" rel="opener"
                                class="d-flex align-center mud-text-primary" style="text-decoration: none;">
@@ -351,14 +346,32 @@ else
                             <MudText Typo="Typo.body2" Class="mb-2"><strong>Prije popravka</strong></MudText>
                             @foreach (var photo in _beforePhotos)
                             {
-                                <MudImage Src="@FullUrl(photo.DownloadUrl)" Height="300" Class="rounded-lg mb-2" Style="width:100%; object-fit:cover;" />
+                                <div class="mb-2">
+                                    <MudImage Src="@FullUrl(photo.DownloadUrl)" Height="300" Class="rounded-lg d-block" Style="width:100%; max-width:360px; margin:0 auto; object-fit:cover;" />
+                                    @if (CurrentUserService.IsInRole("Admin") || CurrentUserService.IsInRole("Manager"))
+                                    {
+                                        <div class="d-flex justify-end">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                           OnClick="@(() => DeleteAttachmentAsync(photo))" />
+                                        </div>
+                                    }
+                                </div>
                             }
                         </MudItem>
                         <MudItem xs="12" md="6">
                             <MudText Typo="Typo.body2" Class="mb-2"><strong>Nakon popravka</strong></MudText>
                             @foreach (var photo in group)
                             {
-                                <MudImage Src="@FullUrl(photo.DownloadUrl)" Height="300" Class="rounded-lg mb-2" Style="width:100%; object-fit:cover;" />
+                                <div class="mb-2">
+                                    <MudImage Src="@FullUrl(photo.DownloadUrl)" Height="300" Class="rounded-lg d-block" Style="width:100%; max-width:360px; margin:0 auto; object-fit:cover;" />
+                                    @if (CurrentUserService.IsInRole("Admin") || CurrentUserService.IsInRole("Manager"))
+                                    {
+                                        <div class="d-flex justify-end">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                           OnClick="@(() => DeleteAttachmentAsync(photo))" />
+                                        </div>
+                                    }
+                                </div>
                             }
                         </MudItem>
                     </MudGrid>
@@ -379,12 +392,14 @@ else
     }
     else if (_attachments.Count == 0)
     {
+        <MudText Typo="Typo.h6" Class="mb-2">Ostali privici</MudText>
         <MudAlert Severity="Severity.Info">Prijava još nema nijedan privitak.</MudAlert>
     }
-    else
+    else if (_otherAttachments.Count > 0)
     {
+        <MudText Typo="Typo.h6" Class="mb-2">Ostali privici</MudText>
         <MudGrid>
-            @foreach (var attachment in _attachments)
+            @foreach (var attachment in _otherAttachments)
             {
                 <MudItem xs="12" sm="6" md="4" lg="3">
                     <MudCard>
@@ -518,9 +533,6 @@ else
 
     private static Color HistoryEventColor(FaultReportHistoryEventDto historyEvent) => historyEvent.EventType switch
     {
-        // Boja ovog eventa prati NOVI status (NewValue) - isti helper kao MudChip status
-        // prikazi svugdje drugdje - tako niz vremenske crte vizualno prati progresiju statusa
-        // umjesto niza identicnih zastavica iste boje.
         "StatusChanged" => FaultStatusColors.StatusColor(historyEvent.NewValue),
         "PriorityChanged" => Color.Warning,
         "TypeSet" => Color.Info,
@@ -1009,6 +1021,31 @@ else
             .OrderBy(g => g.Key)
             .ToList();
 
+    private HashSet<int> _comparisonAttachmentIds
+    {
+        get
+        {
+            if (_beforePhotos.Count == 0 || _afterPhotoGroups.Count == 0)
+            {
+                return new HashSet<int>();
+            }
+
+            var ids = new HashSet<int>(_beforePhotos.Select(p => p.Id));
+            foreach (var group in _afterPhotoGroups)
+            {
+                foreach (var photo in group)
+                {
+                    ids.Add(photo.Id);
+                }
+            }
+
+            return ids;
+        }
+    }
+
+    private List<AttachmentDto> _otherAttachments =>
+        _attachments.Where(a => !_comparisonAttachmentIds.Contains(a.Id)).ToList();
+
     private string InterventionComparisonLabel(int? interventionId)
     {
         if (!interventionId.HasValue)
@@ -1052,8 +1089,6 @@ else
     {
         try
         {
-            // BadRequest(string) na API strani vraca "text/plain" tijelo (ne JSON),
-            // pa ReadFromJsonAsync<string> baca iznimku i uvijek pada na generičku poruku.
             var message = await response.Content.ReadAsStringAsync();
             return string.IsNullOrWhiteSpace(message)
                 ? $"Greška (HTTP {(int)response.StatusCode})."

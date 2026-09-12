@@ -40,8 +40,6 @@ public class AuthController : ControllerBase
                 .ThenInclude(ur => ur.AppRole)
             .FirstOrDefaultAsync(u => u.Email.ToLower() == normalizedEmail);
 
-        // Namjerno ista generička poruka za "korisnik ne postoji", "neaktivan" i "kriva lozinka" -
-        // ne otkrivamo napadaču postoji li email u sustavu.
         if (user is null || !user.IsActive)
         {
             return Unauthorized(GenericLoginError);
@@ -80,8 +78,6 @@ public class AuthController : ControllerBase
         return Ok(BuildLoginResponse(user));
     }
 
-    // Vraca svjez token (isti 8h zivotni vijek kao login) umjesto praznog/ponovljenog -
-    // GET /me tako uz provjeru valjanosti odmah djeluje i kao lagani "refresh" bez posebnog endpointa.
     private LoginResponseDto BuildLoginResponse(AppUser user)
     {
         var roles = user.UserRoles

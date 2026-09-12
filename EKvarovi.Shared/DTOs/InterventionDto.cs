@@ -5,11 +5,9 @@ public class InterventionDto
     public int Id { get; set; }
     public int WorkAssignmentId { get; set; }
 
-    // Tranzitivno preko WorkAssignment -> FaultReport, samo za kontekst prikaza.
     public int FaultReportId { get; set; }
     public string FaultReportDescription { get; set; } = string.Empty;
 
-    // Tranzitivno preko WorkAssignment -> Technician.
     public int TechnicianId { get; set; }
     public string TechnicianName { get; set; } = string.Empty;
 

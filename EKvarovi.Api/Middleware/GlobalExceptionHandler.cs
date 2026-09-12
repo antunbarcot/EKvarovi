@@ -3,11 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace EKvarovi.Api.Middleware;
 
-// Hvata SVAKU iznimku koja procuri iz kontrolera (npr. zaboravljen try/catch, null-ref,
-// DB greska) i vraca je kao ProblemDetails JSON umjesto gole ASP.NET HTML/tekst greske -
-// klijent (Blazor App) uvijek dobiva predvidljiv JSON oblik, bez obzira sto je puklo.
-// Puna poruka izuzetka NIKAD ne ide u odgovor (curenje internih detalja napadacu) - u
-// Production okruzenju Detail je generican, stvarna poruka i stack trace idu samo u log.
 public class GlobalExceptionHandler : IExceptionHandler
 {
     private readonly ILogger<GlobalExceptionHandler> _logger;

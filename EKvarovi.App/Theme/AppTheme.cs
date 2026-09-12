@@ -2,10 +2,6 @@ using MudBlazor;
 
 namespace EKvarovi.App.Theme;
 
-// "Sluzbena" teget/plava tema za zupanijsku upravnu aplikaciju - zamjenjuje default
-// MudBlazor ljubicastu. Jedna klasa nosi i svijetlu i tamnu paletu; MudThemeProvider
-// prebacuje izmedu njih preko IsDarkMode (MainLayout), pa ne treba drzati dva odvojena
-// MudTheme objekta niti duplicirati Typography/LayoutProperties na dva mjesta.
 public class AppTheme : MudTheme
 {
     public AppTheme()
@@ -42,19 +38,11 @@ public class AppTheme : MudTheme
             DrawerText = "#DDE1E4",
         };
 
-        // Manje zaobljeni kutovi (default MudBlazor je vidljivo "pill" izgled na
-        // gumbima/karticama) - kvadratniji rub djeluje sluzbenije, prikladnije za
-        // upravnu aplikaciju.
         LayoutProperties = new LayoutProperties
         {
             DefaultBorderRadius = "4px"
         };
 
-        // "Public Sans" (font vladinih/javnih digitalnih usluga, npr. USWDS) umjesto
-        // MudBlazor default Roboto - prikladnije za zupanijsku upravnu aplikaciju.
-        // Svaka Typography varijanta (H1-H6, Body1, Body2) u MudBlazoru ima SVOJ vlastiti
-        // FontFamily koji NE nasljeđuje Default ako nije eksplicitno postavljen - zato se
-        // font mora ponoviti na svakoj od njih pojedinacno, ne samo na Default.
         var fontFamily = new[] { "Public Sans", "sans-serif" };
         Typography = new Typography
         {

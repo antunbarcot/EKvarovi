@@ -8,8 +8,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EKvarovi.Api.Controllers;
 
-// Popis svih zaposlenika ne treba Reporteru/Technicianu - vide samo svoj kontekst
-// preko drugih endpointa. Izmjene su rezervirane za Admina.
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Roles = "Admin,Manager")]
@@ -17,8 +15,6 @@ public class EmployeesController : ControllerBase
 {
     private readonly EKvaroviDbContext _context;
 
-    // Expression (ne obicna metoda) - EF Core je mora prevesti u SQL projekciju,
-    // pa se ne moze pozvati obicna C# metoda unutar .Select() nad IQueryable.
     private static readonly Expression<Func<Employee, EmployeeDto>> ToDtoProjection = e => new EmployeeDto
     {
         Id = e.Id,

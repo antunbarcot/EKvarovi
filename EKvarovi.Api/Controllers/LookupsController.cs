@@ -6,7 +6,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EKvarovi.Api.Controllers;
 
-// Dropdown/lookup podaci trebaju svim prijavljenim ulogama.
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
@@ -88,10 +87,6 @@ public class LookupsController : ControllerBase
         return Ok(technicians);
     }
 
-    // Dodatni endpoint uz GET technicians - vraca isti skup izvrsitelja ALI s brojem
-    // trenutno aktivnih naloga po svakom, da UI kod dodjele odmah pokaze opterecenje bez
-    // dodatnog poziva po izvrsitelju. Count ide kroz korelirani SQL upit (e.WorkAssignments
-    // .Count(...) unutar .Select() projekcije), ne kao C# petlja nad vec ucitanom listom.
     [HttpGet("technicians-with-workload")]
     public async Task<ActionResult<List<TechnicianWorkloadDto>>> GetTechniciansWithWorkload()
     {
@@ -134,9 +129,6 @@ public class LookupsController : ControllerBase
         return Ok(roles);
     }
 
-    // Opcenito SVI aktivni zaposlenici (bez obzira na IsReporter/IsTechnician) - za
-    // povezivanje korisnickog racuna s profilom u Users.razor. Razlicito od vec
-    // postojecih /technicians i /reporters koji su namjenski filtrirani.
     [HttpGet("employees")]
     public async Task<ActionResult<List<LookupDto>>> GetAllEmployees()
     {

@@ -6,15 +6,19 @@
 @inject HttpClient Http
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
+@inject CurrentUserService CurrentUserService
 
 <PageTitle>Zaposlenici</PageTitle>
 
 <MudText Typo="Typo.h4" Class="mb-4">Zaposlenici</MudText>
 
-<MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-           OnClick="OpenCreateDialogAsync" Disabled="_isLoading" Class="mb-4">
-    Novi zaposlenik
-</MudButton>
+@if (CurrentUserService.IsInRole("Admin"))
+{
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+               OnClick="OpenCreateDialogAsync" Disabled="_isLoading" Class="mb-4">
+        Novi zaposlenik
+    </MudButton>
+}
 
 @if (_errorMessage is not null)
 {
@@ -40,7 +44,10 @@ else if (_errorMessage is null)
                 <MudTh>Lokacija</MudTh>
                 <MudTh>Uloge</MudTh>
                 <MudTh>Status</MudTh>
-                <MudTh>Akcije</MudTh>
+                @if (CurrentUserService.IsInRole("Admin"))
+                {
+                    <MudTh>Akcije</MudTh>
+                }
             </HeaderContent>
             <RowTemplate>
                 <MudTd DataLabel="Ime i prezime">@context.FirstName @context.LastName</MudTd>
@@ -61,16 +68,19 @@ else if (_errorMessage is null)
                         @(context.IsActive ? "Aktivan" : "Neaktivan")
                     </MudChip>
                 </MudTd>
-                <MudTd DataLabel="Akcije">
-                    <MudTooltip Text="Uredi">
-                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
-                                       OnClick="() => OpenEditDialogAsync(context)" />
-                    </MudTooltip>
-                    <MudTooltip Text="Obriši">
-                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                                       OnClick="() => DeleteEmployeeAsync(context)" />
-                    </MudTooltip>
-                </MudTd>
+                @if (CurrentUserService.IsInRole("Admin"))
+                {
+                    <MudTd DataLabel="Akcije">
+                        <MudTooltip Text="Uredi">
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                           OnClick="() => OpenEditDialogAsync(context)" />
+                        </MudTooltip>
+                        <MudTooltip Text="Obriši">
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                           OnClick="() => DeleteEmployeeAsync(context)" />
+                        </MudTooltip>
+                    </MudTd>
+                }
             </RowTemplate>
         </MudTable>
     }

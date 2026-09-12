@@ -9,11 +9,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EKvarovi.Api.Controllers;
 
-// AI funkcije su pomocni alat za upravitelje (sazetak naloga, prijedlog tipa/prioriteta),
-// ne za sve uloge - Technician/Reporter ovamo nemaju pristup.
-// KRITICNO: ovaj kontroler NIKAD ne sprema nista u FaultReports - fault-report-suggestion
-// samo VRACA prijedlog, korisnik ga potvrduje/odbacuje kroz postojeci
-// PUT api/fault-reports/{id}/review.
 [ApiController]
 [Route("api/ai")]
 [Authorize(Roles = "Admin,Manager")]
@@ -53,8 +48,6 @@ public class AiController : ControllerBase
         return Ok(new AiTextResponseDto { Summary = summary });
     }
 
-    // Ovaj endpoint SAMO vraca prijedlog - ne dira bazu. Korisnik prihvaca/odbacuje
-    // prijedlog i tek onda salje potvrdene vrijednosti kroz PUT .../review.
     [HttpPost("fault-report-suggestion")]
     public async Task<ActionResult<FaultReportSuggestionDto>> GetFaultReportSuggestion(FaultReportSuggestionRequestDto dto)
     {

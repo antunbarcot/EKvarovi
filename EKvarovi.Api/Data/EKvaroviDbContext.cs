@@ -116,14 +116,12 @@ public class EKvaroviDbContext : DbContext
                 .HasForeignKey(x => x.ReporterId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // FaultTypeId je nullable FK - vrstu kvara odreduje Manager tek kod pregleda
             e.HasOne(x => x.FaultType)
                 .WithMany(x => x.FaultReports)
                 .HasForeignKey(x => x.FaultTypeId)
                 .IsRequired(false)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // FaultPriorityId je nullable FK - prioritet odreduje Manager tek kod pregleda
             e.HasOne(x => x.FaultPriority)
                 .WithMany(x => x.FaultReports)
                 .HasForeignKey(x => x.FaultPriorityId)
@@ -141,7 +139,6 @@ public class EKvaroviDbContext : DbContext
     {
         modelBuilder.Entity<WorkAssignment>(e =>
         {
-            // Prijave s dodjelama se ne smiju fizicki brisati - Restrict umjesto Cascade
             e.HasOne(x => x.FaultReport)
                 .WithMany(x => x.WorkAssignments)
                 .HasForeignKey(x => x.FaultReportId)
@@ -157,9 +154,6 @@ public class EKvaroviDbContext : DbContext
                 .HasForeignKey(x => x.AssignedByAppUserId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // Preporuceni filtered unique index: najvise jedna aktivna dodjela po prijavi.
-            // SQLite podrzava "partial index" preko HasFilter - EF Core ga prevodi u
-            // CREATE UNIQUE INDEX ... WHERE "IsActive" = 1
             e.HasIndex(x => x.FaultReportId)
                 .IsUnique()
                 .HasFilter("\"IsActive\" = 1")
@@ -168,7 +162,6 @@ public class EKvaroviDbContext : DbContext
 
         modelBuilder.Entity<Intervention>(e =>
         {
-            // KRITICNO: Intervention se vezuje na WorkAssignment, NE direktno na FaultReport
             e.HasOne(x => x.WorkAssignment)
                 .WithMany(x => x.Interventions)
                 .HasForeignKey(x => x.WorkAssignmentId)
@@ -190,7 +183,6 @@ public class EKvaroviDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
-        // InterventionMaterial = M:N spojna tablica Intervention <-> Material s Quantity poljem
         modelBuilder.Entity<InterventionMaterial>(e =>
         {
             e.HasOne(x => x.Intervention)
@@ -216,8 +208,6 @@ public class EKvaroviDbContext : DbContext
                 .HasForeignKey(x => x.FaultReportId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // InterventionId je opcionalna veza - ne smijemo lancano obrisati privitke
-            // (brisanje privitka provodi API servis, ukljucujuci fizicku datoteku)
             e.HasOne(x => x.Intervention)
                 .WithMany(x => x.Attachments)
                 .HasForeignKey(x => x.InterventionId)
@@ -237,16 +227,11 @@ public class EKvaroviDbContext : DbContext
 
         modelBuilder.Entity<FaultReportHistoryEvent>(e =>
         {
-            // Za razliku od ostalih veza na FaultReport (Restrict, jer se prijave s
-            // vezama ne brisu fizicki), povijest je cisto izvedeni "log" podatak bez
-            // vlastitog poslovnog znacenja odvojenog od prijave - pa Cascade ovdje.
             e.HasOne(x => x.FaultReport)
                 .WithMany(x => x.HistoryEvents)
                 .HasForeignKey(x => x.FaultReportId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // ChangedByAppUserId je nullable (sistemske promjene) - Restrict da brisanje
-            // AppUser racuna ne obrise povijest koju je taj korisnik napravio.
             e.HasOne(x => x.ChangedByAppUser)
                 .WithMany(x => x.ChangedHistoryEvents)
                 .HasForeignKey(x => x.ChangedByAppUserId)
@@ -263,7 +248,6 @@ public class EKvaroviDbContext : DbContext
         {
             e.HasIndex(x => x.Email).IsUnique();
 
-            // EmployeeId je opcionalna veza - ne svaki AppUser ima poslovni profil (npr. cisti Admin)
             e.HasOne(x => x.Employee)
                 .WithOne(x => x.AppUser)
                 .HasForeignKey<AppUser>(x => x.EmployeeId)
@@ -271,7 +255,6 @@ public class EKvaroviDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
-        // AppUserRole = M:N spojna tablica s composite primarnim kljucem (AppUserId, AppRoleId)
         modelBuilder.Entity<AppUserRole>(e =>
         {
             e.HasKey(x => new { x.AppUserId, x.AppRoleId });
@@ -350,10 +333,6 @@ public class EKvaroviDbContext : DbContext
             new AppRole { Id = 4, Name = "Reporter" }
         );
 
-        // Privremeni sistemski AppUser dok JWT autentikacija nije ozicena u API-ju.
-        // IsActive = false - ovaj racun se ne moze koristiti za prijavu, sluzi samo
-        // kao AssignedByAppUserId placeholder dok WorkAssignmentsController ne
-        // cita stvarni identitet iz JWT claima.
         modelBuilder.Entity<AppUser>().HasData(
             new AppUser
             {

@@ -9,9 +9,6 @@
 
     @if (CurrentUserService.IsAuthenticated)
     {
-        @* Vidljivost linkova ovdje samo prati [Authorize] pravila vec postavljena na API
-           kontrolerima - ovo je UX pogodnost, stvarna zastita je na API strani. *@
-
         <MudNavLink Href="/locations" Icon="@Icons.Material.Filled.LocationOn">
             Lokacije
         </MudNavLink>

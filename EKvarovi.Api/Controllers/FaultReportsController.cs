@@ -31,9 +31,6 @@ public class FaultReportsController : ControllerBase
 
     private readonly EKvaroviDbContext _context;
 
-    // Expression (ne obicna metoda) - EF Core je mora prevesti u SQL projekciju,
-    // pa se ne moze pozvati obicna C# metoda unutar .Select() nad IQueryable.
-    // Internal (ne private) - ponovno je koristi DashboardController za "zadnjih 5 prijava".
     internal static readonly Expression<Func<FaultReport, FaultReportDto>> ToDtoProjection = fr => new FaultReportDto
     {
         Id = fr.Id,
@@ -58,8 +55,6 @@ public class FaultReportsController : ControllerBase
         _context = context;
     }
 
-    // Opci pregled svih prijava (sa svih lokacija) - Reporter/Technician namjerno
-    // iskljuceni, oni koriste /mine endpoint (dolazi u sljedecem koraku).
     [HttpGet]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<List<FaultReportDto>>> GetFaultReports([FromQuery] FaultReportQueryParametersDto parameters)
@@ -73,9 +68,6 @@ public class FaultReportsController : ControllerBase
         return Ok(faultReports);
     }
 
-    // Zajednicko filtriranje + sortiranje za GET (lista) i oba export endpointa -
-    // export MORA postivati ISTE filtere kao trenutni prikaz liste, pa se namjerno
-    // ne duplicira logika po tri mjesta.
     private IQueryable<FaultReport> BuildFilteredQuery(FaultReportQueryParametersDto parameters)
     {
         IQueryable<FaultReport> query = _context.FaultReports;
@@ -124,12 +116,6 @@ public class FaultReportsController : ControllerBase
 
         if (parameters.UnassignedOnly == true)
         {
-            // "Pregledano ili dalje" = SortOrder usporedba, isti princip kao
-            // DashboardController.UnassignedFaultReportsCount. Podupit za SortOrder ostaje
-            // UNUTAR .Where() lambde (ne izvuci u zaseban await prije) - BuildFilteredQuery
-            // je namjerno sinkrona (dijele je GetFaultReports/ExportCsv/ExportPdf) i samo
-            // slaze IQueryable, ne izvrsava upite - EF Core cijeli izraz prevodi u JEDAN SQL
-            // upit sa skalarnim subqueryjem tek kad pozivatelj napravi ToListAsync().
             query = query.Where(fr => fr.FaultStatus!.SortOrder >= _context.FaultStatuses
                     .Where(s => s.Name == StatusPregledano)
                     .Select(s => s.SortOrder)
@@ -162,8 +148,6 @@ public class FaultReportsController : ControllerBase
                 CsvEscape(row.CreatedAt.ToString("dd.MM.yyyy HH:mm"))));
         }
 
-        // UTF-8 BOM ispred sadrzaja - bez njega Excel CSV s hrvatskim dijakriticima
-        // (š, đ, č, ć, ž) cita kao Windows-1250/ANSI i slova ispadnu iskrivljena.
         var bytes = Encoding.UTF8.GetPreamble()
             .Concat(Encoding.UTF8.GetBytes(csv.ToString()))
             .ToArray();
@@ -246,8 +230,6 @@ public class FaultReportsController : ControllerBase
         return File(bytes, "application/pdf", "fault-reports-export.pdf");
     }
 
-    // Identitet se cita ISKLJUCIVO iz JWT "EmployeeId" claima, nikad iz parametra koji
-    // salje klijent - inace bi Reporter mogao poslati tudi Id i vidjeti tude prijave.
     [HttpGet("mine")]
     [Authorize(Roles = "Reporter")]
     public async Task<ActionResult<List<FaultReportDto>>> GetMyFaultReports()
@@ -267,11 +249,6 @@ public class FaultReportsController : ControllerBase
         return Ok(faultReports);
     }
 
-    // Technician smije procitati detalje POJEDINE prijave (treba ih za ekran naloga -
-    // pokretanje/zavrsavanje intervencije, materijal, fotografije) - isti obrazac kao kod
-    // WorkAssignmentsController/InterventionsController: citanje je siroko dopusteno,
-    // ownership (samo VLASTITI aktivni nalog) provjerava se kod write akcija (WorkAssignments/
-    // Interventions kontroleri), ne ovdje.
     [HttpGet("{id:int}")]
     [Authorize(Roles = "Admin,Manager,Technician")]
     public async Task<ActionResult<FaultReportDto>> GetFaultReport(int id)
@@ -397,10 +374,6 @@ public class FaultReportsController : ControllerBase
         return NoContent();
     }
 
-    // Zavrsni korak toka: Upravitelj zatvara prijavu tek NAKON provjere da je uspjesno
-    // rijesena. Obje provjere ispod (status Rijeseno + postojanje zavrsene intervencije)
-    // su, uz ispravan tok kroz UI, redundantne jedna drugoj - ali API ne smije
-    // pretpostaviti da je stanje uvijek doslo kroz ocekivani put, pa provjerava oboje eksplicitno.
     [HttpPut("{id:int}/close")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> CloseFaultReport(int id)
@@ -444,8 +417,6 @@ public class FaultReportsController : ControllerBase
         return NoContent();
     }
 
-    // Ista dostupnost kao GET api/fault-reports/{id} - Technician treba vidjeti
-    // vremensku crtu na ekranu svog naloga, ne samo Admin/Manager.
     [HttpGet("{id:int}/history")]
     [Authorize(Roles = "Admin,Manager,Technician")]
     public async Task<ActionResult<List<FaultReportHistoryEventDto>>> GetFaultReportHistory(int id)
@@ -488,9 +459,6 @@ public class FaultReportsController : ControllerBase
             return NotFound();
         }
 
-        // Eksplicitna zastita, neovisna o provjeri dodjela ispod: zatvorena prijava se
-        // NIKAD ne smije obrisati, bez obzira kakvo joj je stanje WorkAssignments (iako bi
-        // zatvorena prijava gotovo sigurno vec imala dodjele i tako bila blokirana i ispod).
         if (faultReport.FaultStatus?.Name == StatusZatvoreno)
         {
             return BadRequest("Zatvorene prijave se ne mogu brisati.");

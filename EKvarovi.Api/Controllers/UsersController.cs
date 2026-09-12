@@ -10,8 +10,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EKvarovi.Api.Controllers;
 
-// Upravljanje korisnickim racunima - iskljucivo Admin. Racuni se NIKAD fizicki ne
-// brisu (povijest tko je sto radio ostaje vazna) - samo deaktivacija (IsActive = false).
 [ApiController]
 [Route("api/users")]
 [Authorize(Roles = "Admin")]
@@ -141,15 +139,12 @@ public class UsersController : ControllerBase
         user.IsActive = dto.IsActive;
         user.EmployeeId = dto.EmployeeId;
 
-        // Prazno/null Password kod uredivanja znaci "ne mijenjaj lozinku".
         if (!string.IsNullOrWhiteSpace(dto.Password))
         {
             var hasher = new PasswordHasher<AppUser>();
             user.PasswordHash = hasher.HashPassword(user, dto.Password);
         }
 
-        // Jednostavniji pristup nego racunanje diff-a: obrisi postojece uloge i
-        // kreiraj nove prema poslanom RoleIds.
         var existingRoles = await _context.AppUserRoles.Where(ur => ur.AppUserId == id).ToListAsync();
         _context.AppUserRoles.RemoveRange(existingRoles);
 
@@ -163,8 +158,6 @@ public class UsersController : ControllerBase
         return NoContent();
     }
 
-    // Poseban endpoint samo za deaktivaciju - jednostavniji poziv iz UI-ja za jednu
-    // akciju nego slanje citavog SaveUserAdminDto samo da se promijeni IsActive.
     [HttpPut("{id:int}/deactivate")]
     public async Task<IActionResult> DeactivateUser(int id)
     {

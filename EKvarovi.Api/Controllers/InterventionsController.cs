@@ -9,8 +9,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EKvarovi.Api.Controllers;
 
-// Iste uloge za sve akcije (Technician radi na SVOJOJ intervenciji - ownership
-// provjera dolazi kasnije uz /mine), pa je [Authorize] na razini klase.
 [ApiController]
 [Route("api/interventions")]
 [Authorize(Roles = "Admin,Manager,Technician")]
@@ -178,9 +176,6 @@ public class InterventionsController : ControllerBase
             return BadRequest("Nalog nije povezan s postojećom prijavom.");
         }
 
-        // Status prijave se biljezi u povijest SAMO kod prve intervencije na ovoj dodjeli -
-        // ako je prethodna na istoj dodjeli bila neuspjesna, prijava je vec "U radu" i ovdje
-        // se nista stvarno ne mijenja, pa nema smisla dodavati jos jedan StatusChanged zapis.
         var isFirstInterventionOnAssignment = !await _context.Interventions
             .AnyAsync(i => i.WorkAssignmentId == dto.WorkAssignmentId);
         var previousStatusName = faultReport.FaultStatus?.Name;
@@ -293,8 +288,6 @@ public class InterventionsController : ControllerBase
                 return BadRequest($"Status \"{InterventionStatusNeuspjesna}\" nije pronađen u šifrarniku statusa intervencija.");
             }
 
-            // FaultReport status se namjerno NE mijenja - ostaje "U radu" tako da
-            // se na istoj (i dalje aktivnoj) dodjeli može pokrenuti nova intervencija.
             intervention.InterventionStatusId = neuspjesnaStatus.Id;
         }
 
@@ -340,10 +333,6 @@ public class InterventionsController : ControllerBase
             return BadRequest("Količina materijala mora biti veća od nule.");
         }
 
-        // Ako materijal već postoji na ovoj intervenciji, količina se zbraja umjesto
-        // dupliciranja retka - Quantity je jedini podatak koji nosi InterventionMaterial
-        // (nema npr. serije/napomene po retku) pa dva retka za isti materijal ne bi nosila
-        // nikakvu dodatnu informaciju, samo bi otežala zbrajanje potrošnje pri izvještavanju.
         var existingRow = await _context.InterventionMaterials
             .FirstOrDefaultAsync(im => im.InterventionId == id && im.MaterialId == dto.MaterialId);
 
@@ -416,9 +405,6 @@ public class InterventionsController : ControllerBase
         return NoContent();
     }
 
-    // "Izvrsitelj smije mijenjati samo svoj aktivni nalog" - Admin/Manager zaobilaze ovu
-    // provjeru (vec pokriveno [Authorize] na klasi), za Technician identitet se cita
-    // ISKLJUCIVO iz JWT "EmployeeId" claima, nikad iz parametra koji salje klijent.
     private ActionResult? EnsureTechnicianOwnsAssignment(int? assignmentTechnicianId)
     {
         if (User.IsInRole("Admin") || User.IsInRole("Manager"))

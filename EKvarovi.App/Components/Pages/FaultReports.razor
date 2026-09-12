@@ -341,11 +341,6 @@
         await _table.ReloadServerData();
     }
 
-    // Zajednicko za sve brze filtere ispod - svaki klik daje CIST rezultat (samo taj
-    // jedan kriterij), ne kombinaciju sa sto god je vec bilo postavljeno. Tekst pretrage
-    // namjerno NIJE ovdje (ostaje netaknut) - "Kritične" nad vec upisanom pretragom i dalje
-    // ima smisla kao "kritične koje sadrze X u opisu", za razliku od ostalih filtera koji bi
-    // se medusobno iskljucivali.
     private void ClearFiltersExceptSearch()
     {
         _locationId = null;
@@ -388,13 +383,6 @@
         await _table.ReloadServerData();
     }
 
-    // HttpClient u Blazor Serveru poziva ide SA servera, ne iz preglednika - obicna
-    // navigacija/anchor na API URL ne bi ponijela JWT (auth handler ga dodaje samo
-    // ovom HttpClient-u), a puko "GetAsync" u C#-u sam po sebi ne pokrece download
-    // u pregledniku korisnika. Zato: server dohvati bajtove kroz vec auth-ozicani
-    // Http, pretvori u base64 i preda ih JS-u (wwwroot/js/fileDownload.js) koji
-    // tek gradi Blob + privremeni <a download> - to je dio koji preglednik stvarno
-    // pokrene kao "spremi datoteku".
     private async Task DownloadExportAsync(string format)
     {
         _isExporting = true;
@@ -530,9 +518,6 @@
         }
     }
 
-    // Isto pravilo kao DashboardController.UpcomingDueFaultReportsCount i
-    // FaultReportsController BuildFilteredQuery (dueSoon=true) - ovdje samo vizualni
-    // indikator na vec ucitanom retku, ne zaseban API poziv.
     private static bool IsDueSoon(FaultReportDto faultReport)
     {
         if (faultReport.DueDate is null || faultReport.FaultStatusName is StatusRijeseno or StatusZatvoreno)

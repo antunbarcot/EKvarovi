@@ -8,8 +8,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EKvarovi.Api.Controllers;
 
-// Technician smije citati materijale (bira ih kod evidentiranja intervencije),
-// ali ne smije upravljati sifrarnikom materijala.
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Roles = "Admin,Manager,Technician")]

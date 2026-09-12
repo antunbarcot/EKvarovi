@@ -8,8 +8,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EKvarovi.Api.Controllers;
 
-// Citanje/upload dopusteno svim prijavljenim ulogama - svatko dodaje/vidi
-// fotografije u svom kontekstu. Brisanje je rezervirano za Admin/Manager.
 [ApiController]
 [Route("api/attachments")]
 [Authorize]
@@ -24,9 +22,6 @@ public class AttachmentsController : ControllerBase
 
     private const long MaxFileSizeBytes = 10 * 1024 * 1024;
 
-    // Privremeni placeholder dok JWT autentikacija ne postoji u API-ju - vidi seed
-    // AppUser Id=1 ("Sistem") u EKvaroviDbContext. Kad autentikacija bude ozicena,
-    // ovo se zamjenjuje s identitetom prijavljenog korisnika iz JWT claima.
     private const int SystemAppUserId = 1;
 
     private readonly EKvaroviDbContext _context;

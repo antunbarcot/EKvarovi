@@ -1,17 +1,3 @@
-// =====================================================================
-// e-Kvarovi Zupanije - DBML model baze (dbdiagram.io)
-// Tema: 3. e-Kvarovi Zupanije - prijava i obrada kvarova
-// Napomena: DBML ne podrzava direktno "filtered/partial unique index"
-// (WHERE klauzula), pa su takva pravila dokumentirana kao Note na tablici
-// i moraju biti implementirana kao filtered index u EF Core migraciji
-// (ili provjerom u servisu/transakciji) - vidi WorkAssignments.
-// =====================================================================
-
-
-// ---------------------------------------------------------------------
-// LOOKUP TABLICE
-// ---------------------------------------------------------------------
-
 Table LocationTypes {
   Id int [pk, increment]
   Name varchar(100) [not null, unique]
@@ -72,10 +58,6 @@ Table AppRoles {
 }
 
 
-// ---------------------------------------------------------------------
-// LOKACIJE I ZAPOSLENICI
-// ---------------------------------------------------------------------
-
 Table Locations {
   Id int [pk, increment]
   Name varchar(200) [not null]
@@ -103,10 +85,6 @@ Table Employees {
 }
 
 
-// ---------------------------------------------------------------------
-// PRIJAVE KVAROVA
-// ---------------------------------------------------------------------
-
 Table FaultReports {
   Id int [pk, increment]
   LocationId int [not null]
@@ -123,10 +101,6 @@ Table FaultReports {
   Note: 'Sredisnja poslovna cjelina. FaultTypeId i FaultPriorityId su namjerno nullable - "nepoznato" stanje dok upravitelj ne pregleda prijavu.'
 }
 
-
-// ---------------------------------------------------------------------
-// DODJELE (WorkAssignments) I INTERVENCIJE
-// ---------------------------------------------------------------------
 
 Table WorkAssignments {
   Id int [pk, increment]
@@ -200,7 +174,7 @@ Table InterventionMaterials {
   Id int [pk, increment]
   InterventionId int [not null]
   MaterialId int [not null]
-  Quantity decimal [not null, note: 'Mora biti > 0 - provjerava servis']
+  Quantity decimal(18,3) [not null, note: 'Mora biti > 0 - provjerava servis']
 
   Note: '''
   M:N spojna tablica izmedu Interventions i Materials s dodatnim poljem
@@ -211,10 +185,6 @@ Table InterventionMaterials {
   '''
 }
 
-
-// ---------------------------------------------------------------------
-// PRIVICI (fotografije / dokumenti)
-// ---------------------------------------------------------------------
 
 Table Attachments {
   Id int [pk, increment]
@@ -237,10 +207,6 @@ Table Attachments {
 }
 
 
-// ---------------------------------------------------------------------
-// VREMENSKA CRTA (povijest promjena statusa/prioriteta/dodjela)
-// ---------------------------------------------------------------------
-
 Table FaultReportHistoryEvents {
   Id int [pk, increment]
   FaultReportId int [not null]
@@ -261,10 +227,6 @@ Table FaultReportHistoryEvents {
   '''
 }
 
-
-// ---------------------------------------------------------------------
-// KORISNICKI RACUNI (odvojeno od poslovnih profila Employee)
-// ---------------------------------------------------------------------
 
 Table AppUsers {
   Id int [pk, increment]
@@ -289,10 +251,6 @@ Table AppUserRoles {
   Note: 'M:N - jedan AppUser moze imati vise uloga istovremeno (npr. Manager i Technician).'
 }
 
-
-// =====================================================================
-// RELACIJE
-// =====================================================================
 
 Ref: Locations.LocationTypeId > LocationTypes.Id
 Ref: Employees.LocationId > Locations.Id
@@ -323,13 +281,9 @@ Ref: FaultReportHistoryEvents.FaultReportId > FaultReports.Id [delete: cascade]
 Ref: FaultReportHistoryEvents.ChangedByAppUserId > AppUsers.Id
 
 Ref: AppUsers.EmployeeId > Employees.Id
-Ref: AppUserRoles.AppUserId > AppUsers.Id
+Ref: AppUserRoles.AppUserId > AppUsers.Id [delete: cascade]
 Ref: AppUserRoles.AppRoleId > AppRoles.Id
 
-
-// ---------------------------------------------------------------------
-// TABLE GROUPS (samo za preglednost dijagrama)
-// ---------------------------------------------------------------------
 
 TableGroup Lookups {
   LocationTypes

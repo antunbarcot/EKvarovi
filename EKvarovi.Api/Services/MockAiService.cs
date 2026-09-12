@@ -4,20 +4,8 @@ using EKvarovi.Shared.DTOs;
 
 namespace EKvarovi.Api.Services;
 
-// Ne treba API kljuc niti vanjski poziv - radi uvijek deterministicki, na temelju
-// labeliranih redaka u promptu (koje sastavlja pozivatelj, npr. AiController) i
-// jednostavnih heuristika nad slobodnim tekstom opisa kvara. Zamjena "pravim" AI
-// providerom (npr. OpenAI) kasnije ide iza istog IAiService sucelja, bez promjena
-// u kontroleru koji ga poziva.
 public class MockAiService : IAiService
 {
-    // FaultTypeId vrijednosti odgovaraju seed podacima iz EKvaroviDbContext
-    // (SeedLookups) - MockAiService namjerno nema DbContext ovisnost (cista
-    // heuristika nad tekstom), pa su ID-jevi ovdje nuzno hardkodirani.
-    // Prepoznavanje je "scored" (broji se koliko kljucnih rijeci iz kategorije
-    // se pojavljuje u opisu), ne "prvi pogodak pobjedjuje" - opis koji spomene
-    // vise rijeci iz jedne kategorije treba jace prevagnuti nad slucajnim
-    // spominjanjem jedne rijeci iz druge.
     private static readonly (string[] Keywords, int FaultTypeId, string FaultTypeName)[] FaultTypeRules =
     {
         (new[]
@@ -153,9 +141,6 @@ public class MockAiService : IAiService
         return sb.ToString();
     }
 
-    // Hrvatska mnozina prati "1 / 2-4 / 5+" obrazac (uz iznimku 11-14, koji uvijek
-    // ide u "mnogo" oblik bez obzira na zadnju znamenku - npr. "14 intervencija", ne
-    // "14 intervencije").
     private static string PluralizeCroatian(int count, string formOne, string formFew, string formMany)
     {
         var mod100 = count % 100;
@@ -216,9 +201,6 @@ public class MockAiService : IAiService
         };
     }
 
-    // Bira kategoriju s najvise pogodenih kljucnih rijeci (ne prvu koja se pojavi u
-    // popisu pravila) - opis koji spominje vise razlicitih elektricnih pojmova treba
-    // prevagnuti nad slucajnim spominjanjem jedne rijeci iz druge kategorije.
     private static (int Id, string Name, List<string> MatchedKeywords) MatchFaultType(string normalizedDescription)
     {
         (int Id, string Name, List<string> Keywords)? best = null;
@@ -272,9 +254,6 @@ public class MockAiService : IAiService
         return trimmed.Length > 60 ? trimmed[..60].TrimEnd() + "…" : trimmed;
     }
 
-    // Korisnici cesto pisu bez hrvatskih dijakritika (npr. "uticnica" umjesto
-    // "utičnica") - da prepoznavanje kljucnih rijeci ne ovisi o tome, i opis i
-    // kljucne rijeci se prije usporedbe svode na verziju bez dijakritika.
     private static string RemoveDiacritics(string input)
     {
         var sb = new StringBuilder(input.Length);

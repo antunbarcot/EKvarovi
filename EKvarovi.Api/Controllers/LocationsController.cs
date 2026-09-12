@@ -8,8 +8,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EKvarovi.Api.Controllers;
 
-// Bilo koja prijavljena uloga smije citati lokacije - Reporter treba popis
-// da odabere svoju lokaciju kod prijave kvara. Izmjene su rezervirane za Admina.
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
@@ -17,8 +15,6 @@ public class LocationsController : ControllerBase
 {
     private readonly EKvaroviDbContext _context;
 
-    // Expression (ne obican metoda) - EF Core je mora prevesti u SQL projekciju,
-    // pa se ne moze pozvati obicna C# metoda unutar .Select() nad IQueryable.
     private static readonly Expression<Func<Location, LocationDto>> ToDtoProjection = l => new LocationDto
     {
         Id = l.Id,

@@ -18,8 +18,6 @@
 }
 else if (!_hasAccess)
 {
-    @* Prava zastita je vec [Authorize(Roles="Technician")] na api/work-assignments/mine -
-       ovo je samo UX zastita da korisnik bez uloge Technician ne gleda praznu stranicu. *@
     <MudAlert Severity="Severity.Warning">Nemate pristup ovoj stranici.</MudAlert>
 }
 else if (_errorMessage is not null)
@@ -75,8 +73,6 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        // Bez ovoga bi provjera uloge ispod mogla ispasti pogresna - CurrentUserService
-        // svoje stanje (Roles, EmployeeId) ucitava asinkrono iz sessionStorage.
         await CurrentUserService.EnsureInitializedAsync();
         _hasAccess = CurrentUserService.IsInRole("Technician");
 
@@ -97,8 +93,6 @@ else
 
         try
         {
-            // Napomena: NE saljemo nikakav ID - server identitet cita iskljucivo iz
-            // JWT "EmployeeId" claima (vidi GET api/work-assignments/mine na API-ju).
             var assignments = await Http.GetFromJsonAsync<List<WorkAssignmentDto>>("api/work-assignments/mine") ?? new();
 
             var views = new List<AssignmentView>();

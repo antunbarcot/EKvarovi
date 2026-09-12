@@ -61,9 +61,6 @@
 </MudLayout>
 
 <style>
-    /* Suptilan dekorativni sloj SAMO u MudDrawer-u (bocna navigacija) - isti skyline motiv
-       kao na Login.razor, ali josa blijedi jer je ovo aktivni radni prostor. MudMainContent
-       (gdje se prikazuju tablice/podaci) namjerno ostaje potpuno bez ove pozadine. */
     .drawer-content {
         position: relative;
         height: 100%;
@@ -96,9 +93,6 @@
 </div>
 
 @code {
-    // Jedina javna, nezasticena ruta - sve ostalo trazi prijavu. Ovo NE zamjenjuje
-    // [Authorize] na API-ju (to je stvarna sigurnost) - samo sprjecava da neprijavljen
-    // korisnik gleda u praznu/slomljenu stranicu dok ceka da mu API vrati 401 na svaki poziv.
     private static readonly string[] PublicPaths = { "/login" };
     private const string DarkModeStorageKey = "ekvarovi-dark-mode";
 
@@ -111,17 +105,9 @@
         await CurrentUserService.EnsureInitializedAsync();
         RedirectIfNotAuthenticated();
 
-        // MainLayout se NE rekonstruira pri navigaciji unutar istog kruga (samo @Body
-        // ostaje isti "prozor") - OnInitializedAsync gore pokriva samo prvo ucitavanje,
-        // pa svaku sljedecu navigaciju (npr. klik na link prije prijave) hvatamo ovdje.
         NavigationManager.LocationChanged += OnLocationChanged;
     }
 
-    // OnAfterRender(Async) se NE poziva tijekom statickog prerendera (samo nakon sto se
-    // interaktivni krug uspostavi) - JS interop je ovdje siguran bez dodatnih provjera.
-    // Spremanje u localStorage (ne ProtectedLocalStorage) je namjerna odluka: preferencija
-    // teme nije osjetljiv podatak vezan uz identitet korisnika, pa nema potrebe za
-    // sifriranjem/potpisivanjem vrijednosti - obican localStorage je dovoljan i jednostavniji.
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender)
@@ -140,7 +126,6 @@
         }
         catch (JSException)
         {
-            // Ostaje na defaultnoj (svijetloj) temi ako localStorage nije dostupan.
         }
     }
 
@@ -154,16 +139,11 @@
         }
         catch (JSException)
         {
-            // Preferenca se jednostavno ne pamti kroz sesije ako spremanje ne uspije -
-            // prekidac i dalje radi unutar trenutne sesije (in-memory _isDarkMode).
         }
     }
 
     private sealed record SearchResultItem(string Category, string CategoryLabel, string Icon, int Id, string Label);
 
-    // MudAutocomplete nema ugradjeno grupiranje po kategoriji - rezultati se zato slazu
-    // u fiksnom redoslijedu (Prijave / Lokacije / Zaposlenici), a ItemTemplate ispod
-    // svakoj stavci ispisuje naziv kategorije + ikonu, sto vizualno postize isti ucinak.
     private async Task<IEnumerable<SearchResultItem>> SearchGlobalAsync(string? value, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(value) || value.Trim().Length < 2)
@@ -193,8 +173,6 @@
         }
         catch (OperationCanceledException)
         {
-            // Korisnik je nastavio tipkati prije nego je prethodni zahtjev zavrsio -
-            // MudAutocomplete otkazuje prijasnji poziv, ovo NIJE stvarna greska.
             return Array.Empty<SearchResultItem>();
         }
         catch (Exception)
@@ -232,13 +210,6 @@
 
     private void RedirectIfNotAuthenticated()
     {
-        // KRITICNO: dok CurrentUserService jos nije uspio procitati sessionStorage
-        // (staticni prerender prije spajanja SignalR kruga, JS interop nedostupan) NE
-        // smijemo redirectati - u tom trenutku bismo AUTOMATSKI redirectali bas SVAKOG
-        // korisnika (i vec prijavljenog!) jer IsAuthenticated defaultno cita kao false dok
-        // se ne dozna stvarno stanje. NavigationManager.NavigateTo pozvan tijekom prerendera
-        // odmah salje HTTP 302 za cijeli response - prava (interaktivna) provjera bi se
-        // tako presjekla prije nego uopce dobije priliku procitati stvarni token.
         if (!CurrentUserService.IsInitialized)
         {
             return;

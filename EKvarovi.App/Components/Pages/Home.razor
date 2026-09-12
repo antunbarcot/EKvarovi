@@ -9,8 +9,6 @@
 <PageTitle>Početna</PageTitle>
 
 <style>
-    /* Zadane MudChart oznake (12px/14px) su premalene za brzo ocitavanje na dashboardu -
-       povecano na dashboardu bez diranja MudBlazor teme drugdje u aplikaciji. */
     .sla-chart-card .mud-chart-bar text,
     .sla-chart-card .mud-chart-donut text {
         font-size: 14px;
@@ -224,9 +222,6 @@ else if (_isFullDashboard)
                                   ChartOptions="_faultTypeChartOptions" Width="300px" Height="300px" Class="sla-donut-chart" />
                     </div>
 
-                    @* MudChart (v9.8) ShowValues ne iscrtava nista za Donut/Pie (provjereno u DOM-u -
-                       nema text elemenata unutar SVG-a), pa se brojevi po tipu kvara ispisuju rucno
-                       ispod grafa - i dalje bez potrebe za hoverom. *@
                     <div class="d-flex flex-wrap justify-center ga-2 mt-3">
                         @foreach (var ft in _sla.FaultTypeBreakdown)
                         {
@@ -292,9 +287,6 @@ else
     private List<ChartSeries<double>> _faultTypeChartSeries = new();
     private string[] _faultTypeChartLabels = Array.Empty<string>();
 
-    // Nijanse plave/sive izvedene iz AppTheme.cs (PaletteLight/PaletteDark Primary/Secondary) -
-    // grafovi na dashboardu tako vizualno pripadaju istoj teget temi kao ostatak aplikacije,
-    // umjesto MudBlazor default sarene palete.
     private static readonly string[] ChartPalette =
     {
         "#1E3A5F", "#4C7CA8", "#2E527F", "#5C6B73", "#8A97A0", "#152A45", "#6C97BE", "#3A6386"
@@ -413,9 +405,6 @@ else
 
     private sealed record StatTile(string Label, string Value, string Icon, Color Color);
 
-    // Cisto vizualni tretman - suptilna pozadina i lijevi obrub u boji ozbiljnosti za
-    // kartice koje trenutno signaliziraju problem (Error/Warning), ostale kartice
-    // (Info/Success) ostaju na neutralnom izgledu kao dosad.
     private static string TileStyle(Color color) => color switch
     {
         Color.Error => "background-color:rgba(244,67,54,0.08); border-left:4px solid #f44336;",
@@ -423,13 +412,6 @@ else
         _ => string.Empty
     };
 
-    // Boja nosi ozbiljnost stanja za "problem" kartice (kriticne/zakasnjele/bez
-    // izvrsitelja) - crvene/narancaste dok je brojac > 0. Kad padnu na 0 NE odlaze sve u
-    // istu zelenu (bile su vizualno identicne kad su sve tri "cisto") nego svaka dobiva
-    // svoju boju za "dobro" stanje, da se kartice medusobno razlikuju i kad nema problema.
-    // Ikona za te kartice ostaje FIKSNA (ne mijenja se u kvacicu na 0) iz istog razloga.
-    // Cisto informativne metrike (otvorene prijave, aktivne intervencije, prosjek) ne
-    // signaliziraju problem pa svaka dobiva svoju, medusobno razlicitu boju.
     private static List<StatTile> BuildDashboardTiles(DashboardDto d) => new()
     {
         new("Otvorene prijave", d.OpenFaultReportsCount.ToString(), Icons.Material.Filled.Inbox, Color.Info),

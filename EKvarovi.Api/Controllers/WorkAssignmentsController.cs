@@ -9,8 +9,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EKvarovi.Api.Controllers;
 
-// Citanje dopusteno i Technicianu (treba znati je li aktivan na nalogu) - stvarna
-// ownership provjera (samo SVOJ nalog) dolazi kasnije uz /mine endpoint.
 [ApiController]
 [Route("api/work-assignments")]
 [Authorize(Roles = "Admin,Manager,Technician")]
@@ -22,9 +20,6 @@ public class WorkAssignmentsController : ControllerBase
     private const string HistoryEventAssigned = "Assigned";
     private const string HistoryEventReassigned = "Reassigned";
 
-    // Privremeni placeholder dok JWT autentikacija ne postoji u API-ju - vidi seed
-    // AppUser Id=1 ("Sistem") u EKvaroviDbContext. Kad autentikacija bude ozicena,
-    // ovo se zamjenjuje s identitetom prijavljenog Managera/Admina iz JWT claima.
     private const int SystemAppUserId = 1;
 
     private readonly EKvaroviDbContext _context;
@@ -55,8 +50,6 @@ public class WorkAssignmentsController : ControllerBase
 
         if (faultReportId.HasValue)
         {
-            // Namjerno bez filtera na IsActive - povijest dodjela (neaktivne) mora
-            // ostati vidljiva kad se gleda konkretna prijava.
             query = query.Where(wa => wa.FaultReportId == faultReportId.Value);
         }
 
@@ -73,9 +66,6 @@ public class WorkAssignmentsController : ControllerBase
         return Ok(workAssignments);
     }
 
-    // Identitet se cita ISKLJUCIVO iz JWT "EmployeeId" claima, nikad iz parametra koji
-    // salje klijent. Samo AKTIVNE dodjele - Technician ovdje treba svoj trenutni posao,
-    // ne cijelu povijest (za to postoji opci GET s faultReportId filterom).
     [HttpGet("mine")]
     [Authorize(Roles = "Technician")]
     public async Task<ActionResult<List<WorkAssignmentDto>>> GetMyWorkAssignments()
@@ -193,9 +183,6 @@ public class WorkAssignmentsController : ControllerBase
         return CreatedAtAction(nameof(GetWorkAssignment), new { id = workAssignment.Id }, createdDto);
     }
 
-    // Bulk PRVA dodjela - namjerno ne radi reassign. Prijave koje vec imaju aktivnu
-    // dodjelu se PRESKACU (za to postoji zaseban tok: POST {faultReportId}/reassign),
-    // isto kao nepostojece prijave - jedna losa stavka ne smije prekinuti cijelu akciju.
     [HttpPost("bulk")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<BulkAssignResultDto>> BulkAssign(BulkAssignDto dto)
@@ -302,11 +289,6 @@ public class WorkAssignmentsController : ControllerBase
 
         var now = DateTime.UtcNow;
 
-        // Transakcija osigurava da se deaktivacija stare i kreiranje nove aktivne
-        // dodjele dogode zajedno - filtered unique index
-        // IX_WorkAssignments_FaultReportId_ActiveOnly (FaultReportId WHERE IsActive=1)
-        // u EKvaroviDbContext je dodatna baza-level zastita ako ovo pravilo ikad
-        // promakne kroz servisni sloj (npr. konkurentni zahtjev).
         await using var transaction = await _context.Database.BeginTransactionAsync();
 
         currentAssignment.IsActive = false;

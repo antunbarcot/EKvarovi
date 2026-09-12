@@ -4,13 +4,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EKvarovi.Api.Data;
 
-// Seed demo AppUser racuna se namjerno radi u kodu pri startu aplikacije (ne kroz
-// HasData u migraciji): (1) PasswordHasher<AppUser> treba pozvati u runtimeu da izracuna
-// hash, HasData zahtijeva staticku vrijednost poznatu unaprijed; (2) tehnicar/prijavitelj
-// racuni se trebaju povezati s KONKRETNIM Employee zapisom kojeg stvara DemoDataSeeder
-// (mora se pokrenuti PRIJE ovog seedera - vidi Program.cs), pronadjenim preko Email markera
-// (TechnicianMarkerEmail/ReporterMarkerEmail) - ne preko "prvog pronadjenog po ulozi", jer bi
-// takav odabir bio krhak i nepredvidljiv cim postoji vise od jednog tehnicara/prijavitelja.
 public static class DemoUserSeeder
 {
     private const string DemoPassword = "Lozinka123!";

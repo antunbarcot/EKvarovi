@@ -36,6 +36,7 @@ Puni DBML izvor dijagrama nalazi se u `docs/database-model.dbml` - može se uves
 - .NET 10 SDK (oba projekta ciljaju `net10.0`, nema `global.json` koji bi fiksirao točniju verziju).
 - Visual Studio s podrškom za .NET 10 SDK - preporučeno, ali nije obavezno.
 - Alternativa bez Visual Studija: `dotnet` CLI (`dotnet build`, `dotnet run`) radi jednako dobro za sve korake u ovom vodiču.
+- Na potpuno novom računalu (prvi put nakon kloniranja) obično je potrebno instalirati i potvrditi lokalni HTTPS razvojni certifikat: `dotnet dev-certs https --trust`. Detalji i rješavanje problema u sekciji [Rješavanje čestih problema](#rješavanje-čestih-problema) ispod.
 
 ### 2. Kloniranje repozitorija
 
@@ -58,7 +59,7 @@ cd EKvarovi.Api
 dotnet user-secrets set "Jwt:Key" "<vaš-dugačak-nasumičan-string,-minimalno-32-znaka>"
 ```
 
-`Jwt:Issuer` i `Jwt:Audience` se čitaju iz iste `Jwt` sekcije, ali `appsettings.json` već sadrži prazne defaultne vrijednosti za njih (`""`), pa nisu obavezni - aplikacija radi ispravno i bez njih. Ako ih želite eksplicitno postaviti:
+`Jwt:Issuer` i `Jwt:Audience` se čitaju iz iste `Jwt` sekcije, ali `appsettings.json` već sadrži prazne defaultne vrijednosti za njih (`""`), pa nisu obavezni - `EKvarovi.Api/Program.cs` uključuje `ValidateIssuer`/`ValidateAudience` samo ako je odgovarajuća vrijednost stvarno postavljena, pa je aplikacija sigurna za pokretanje i bez njih. Ako ih želite eksplicitno postaviti (stroža validacija tokena):
 
 ```
 dotnet user-secrets set "Jwt:Issuer" "EKvarovi.Api"
@@ -66,6 +67,8 @@ dotnet user-secrets set "Jwt:Audience" "EKvarovi.App"
 ```
 
 Tajne se ovako drže isključivo u `dotnet user-secrets` (izvan repozitorija), nikad u `appsettings.json` ili u Blazoru.
+
+> **Česta greška (povijesna napomena):** Ranija verzija ovog projekta imala je `ValidateIssuer`/`ValidateAudience` bezuvjetno postavljene na `true` u `Program.cs`, dok su `Jwt:Issuer`/`Jwt:Audience` po defaultu prazan string u `appsettings.json`. Kad JWT biblioteka izda token s praznim issuer/audience, ona uopće ne upisuje `iss`/`aud` claim u token - a JWT middleware kod validacije tada odbija **svaki** token čim je `ValidateIssuer`/`ValidateAudience = true`, bez obzira što je i očekivana vrijednost prazna. Posljedica: prijava (`POST /api/auth/login`) uspije jer ne zahtijeva autentikaciju, ali svaki sljedeći poziv (npr. Dashboard) odmah puca s `401 Unauthorized`, a ni F5 ne pomaže jer je uzrok na API strani, ne u pohranjenom tokenu na klijentu. Ovo je sada popravljeno (validacija issuer-a/audience-a se automatski isključuje kad nisu postavljeni), pa gornji koraci za `Jwt:Issuer`/`Jwt:Audience` ostaju potpuno opcionalni. Ako se ipak pojavi 401 odmah nakon prijave, pogledajte [Rješavanje čestih problema](#rješavanje-čestih-problema).
 
 ### 4. Baza i migracije
 
@@ -187,6 +190,35 @@ AI ovdje ništa sam ne sprema - samo vraća prijedlog; Admin/Manager ga mora ru�
 - Tamna tema.
 - Personalizirani dashboard za Technician/Reporter korisnike (`GET /api/dashboard/personal`).
 - Stranica "O aplikaciji".
+
+## Rješavanje čestih problema
+
+### "Unable to connect to web server https" ili greška o nesigurnoj HTTPS vezi
+
+Obično se događa samo prvi put na novom računalu, kad lokalni ASP.NET Core razvojni HTTPS certifikat još nije instaliran/potvrđen. Riješite pokretanjem:
+
+```
+dotnet dev-certs https --trust
+```
+
+Ako ni to ne pomogne (certifikat postoji, ali je oštećen ili nevažeći), očistite ga i ponovno kreirajte:
+
+```
+dotnet dev-certs https --clean
+dotnet dev-certs https --trust
+```
+
+Nakon toga ponovno pokrenite `EKvarovi.Api` i `EKvarovi.App` (korak 6 iznad).
+
+### 401 Unauthorized odmah nakon prijave (na Dashboardu ili drugim stranicama)
+
+Prijava (`POST /api/auth/login`) uspije, ali svaki sljedeći API poziv vraća 401 - najčešći uzrok je nepotpuno postavljen JWT tajni ključ u `dotnet user-secrets`. Provjerite koje su vrijednosti trenutno postavljene, iz `EKvarovi.Api` foldera:
+
+```
+dotnet user-secrets list
+```
+
+Jedino obavezno polje je `Jwt:Key` (bez njega se API uopće ne pokreće - vidi korak 3 iznad); `Jwt:Issuer`/`Jwt:Audience` su opcionalni i sigurni za izostaviti u trenutnoj verziji koda. Ako `Jwt:Key` nedostaje ili je slučajno prazan, postavite ga ponovno kao u koraku 3, pa ponovno pokrenite API (promjene u `user-secrets` se ne učitavaju bez restarta procesa). Ako je `Jwt:Key` postavljen, a 401 se svejedno pojavljuje odmah nakon prijave, provjerite i da ne postoji zaostali (stariji) `dotnet`/`EKvarovi.Api` proces koji već drži port 7094 iz prijašnjeg pokretanja - App bi se tada spajao na krivu instancu API-ja s drugačijim tajnim ključem.
 
 ## Sigurnost
 
